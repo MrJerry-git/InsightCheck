@@ -6,6 +6,8 @@ EXPECTED_TABLES = {
     "exam_items",
     "health_checks",
     "imaging_exams",
+    "import_batches",
+    "imported_records",
     "lab_metrics",
     "lesion_observations",
     "lesion_tracks",

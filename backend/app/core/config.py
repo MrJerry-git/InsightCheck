@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
     database_url: str = "sqlite:///./xunying.db"
-    backend_cors_origins: str = "http://localhost:3000"
+    backend_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     recommendation_artifact_path: str | None = None
 
     @property

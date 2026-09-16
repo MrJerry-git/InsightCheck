@@ -18,6 +18,7 @@ from app.models.domain import (
     RecommendationItem,
     RiskPrediction,
 )
+from app.models.imports import ImportBatch, ImportedRecord
 
 __all__ = [
     "AIReport",
@@ -26,6 +27,8 @@ __all__ = [
     "ExamItem",
     "HealthCheck",
     "ImagingExam",
+    "ImportBatch",
+    "ImportedRecord",
     "LabMetric",
     "Lesion",
     "LesionObservation",
