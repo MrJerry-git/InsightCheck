@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#143d36">
+  <title>循影定检 · 个性化体检辅助决策系统</title>
+  <style>
+    :root {
+      --ink: #18312d;
+      --ink-2: #38534d;
+      --muted: #5c706b;
+      --paper: #f3f6f3;
+      --white: #ffffff;
+      --wash: #e8efeb;
+      --line: #d6dfda;
+      --green: #0d6f61;
+      --green-2: #165548;
+      --mint: #cce6dc;
+      --lime: #d9ee82;
+      --lime-ink: #344600;
+      --orange: #f39a5a;
+      --orange-wash: #fff0e5;
+      --blue: #4263eb;
+      --red: #b94b4b;
+      --shadow: 0 18px 44px rgba(30, 55, 49, .11), 0 4px 12px rgba(30, 55, 49, .05);
+      --radius: 14px;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+      font-family: "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      min-width: 320px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid #4263eb;
+      outline-offset: 2px;
+    }
+    svg { display: block; }
+
+    .app-shell { min-height: 100vh; display: grid; grid-template-columns: 82px minmax(0, 1fr); }
+    .rail {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: 82px;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 18px 10px;
+      background: var(--ink);
+      color: #f6fffc;
+    }
+    .brand-mark {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      background: var(--lime);
+      color: var(--ink);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, .2);
+    }
+    .rail-nav { width: 100%; display: grid; gap: 7px; }
+    .rail-button {
+      position: relative;
+      width: 100%;
+      height: 48px;
+      border: 0;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      color: #a9bbb6;
+      cursor: pointer;
+      transition: background .2s var(--ease), color .2s var(--ease), transform .2s var(--ease);
+    }
+    .rail-button:hover { background: rgba(255,255,255,.08); color: #fff; transform: translateY(-1px); }
+    .rail-button.is-active { background: #f8fffc; color: var(--ink); }
+    .rail-button.is-active::after {
+      content: "";
+      position: absolute;
+      left: -10px;
+      width: 4px;
+      height: 22px;
+      border-radius: 0 4px 4px 0;
+      background: var(--lime);
+    }
+    .rail-button::before {
+      content: attr(aria-label);
+      position: absolute;
+      left: 64px;
+      top: 50%;
+      z-index: 40;
+      translate: 0 -50%;
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-5px);
+      transition: opacity .18s, transform .18s;
+      box-shadow: var(--shadow);
+    }
+    .rail-button:hover::before { opacity: 1; transform: translateX(0); }
+    .rail-spacer { flex: 1; }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--orange);
+      color: #382113;
+      font-weight: 800;
+    }
+
+    .workspace { grid-column: 2; min-width: 0; }
+    .commandbar {
+      height: 72px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 clamp(20px, 3vw, 46px);
+      border-bottom: 1px solid rgba(214, 223, 218, .85);
+      background: rgba(243, 246, 243, .92);
+      backdrop-filter: blur(16px);
+    }
+    .mobile-menu { display: none; }
+    .wordmark { display: flex; align-items: baseline; gap: 12px; min-width: 230px; }
+    .wordmark strong { font-size: 19px; letter-spacing: -.02em; }
+    .wordmark span { color: var(--muted); font-size: 12px; }
+    .crumb {
+      flex: 1;
+      min-width: 0;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .command-actions { display: flex; align-items: center; gap: 10px; }
+    .mobile-safety { display: none; }
+    .demo-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink-2);
+      background: var(--white);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .demo-tag i { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
+    .icon-button, .btn {
+      border: 0;
+      cursor: pointer;
+      transition: transform .2s var(--ease), background .2s, box-shadow .2s;
+    }
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--white);
+      box-shadow: inset 0 0 0 1px var(--line);
+    }
+    .icon-button.mobile-menu { display: none; }
+    .icon-button:hover { transform: translateY(-1px); background: #fbfdfc; }
+    .btn {
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      font-weight: 700;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--ink); color: #fff; box-shadow: 0 8px 18px rgba(24,49,45,.18); }
+    .btn-primary:hover { background: #234b43; }
+    .btn-lime { background: var(--lime); color: var(--lime-ink); }
+    .btn-secondary { background: var(--white); box-shadow: inset 0 0 0 1px var(--line); }
+    .btn-ghost { background: transparent; color: var(--green); padding-inline: 8px; }
+    .btn[disabled] { opacity: .55; cursor: not-allowed; transform: none; }
+
+    .page {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 30px clamp(20px, 3vw, 46px) 44px;
+    }
+    #overview, #trend, #risk, #plans { scroll-margin-top: 88px; }
+    .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .page-heading h1 { margin: 0; max-width: 760px; font-size: clamp(28px, 3vw, 42px); line-height: 1.15; letter-spacing: -.035em; }
+    .page-heading p { margin: 9px 0 0; color: var(--muted); max-width: 650px; }
+    .heading-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .decision-board {
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(290px, .6fr);
+      min-height: 384px;
+      border-radius: var(--radius);
+      background: var(--green-2);
+      color: #f4fff9;
+      box-shadow: var(--shadow);
+    }
+    .trajectory-field { position: relative; min-width: 0; padding: 28px 30px 24px; }
+    .trajectory-field::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(217,238,130,.9), transparent);
+    }
+    .subject-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .subject { display: flex; align-items: center; gap: 12px; }
+    .subject-orbit {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--lime);
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 800;
+      box-shadow: 0 0 0 7px rgba(217,238,130,.12);
+    }
+    .subject strong { display: block; font-size: 17px; }
+    .subject span { color: #bdd1ca; font-size: 12px; }
+    .confidence { text-align: right; }
+    .confidence b { display: block; color: var(--lime); font-size: 22px; font-variant-numeric: tabular-nums; }
+    .confidence span { color: #bdd1ca; font-size: 12px; }
+    .trajectory-chart { margin-top: 20px; }
+    .trajectory-chart svg { width: 100%; height: 190px; overflow: visible; }
+    .chart-year { fill: #a9c4bb; font-size: 11px; }
+    .chart-label { fill: #eaf8f3; font-size: 12px; font-weight: 700; }
+    .chart-dot { transform-origin: center; animation: pulse 2.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .65; transform: scale(.92); } }
+    .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px; color: #c7dbd4; font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .legend i { width: 15px; height: 3px; border-radius: 3px; }
+    .legend .l1 { background: var(--lime); }
+    .legend .l2 { background: var(--orange); }
+    .legend .l3 { background: #a8c0ff; }
+    .mobile-chart-note, .mobile-chart-years { display: none; }
+
+    .decision-panel { padding: 26px; background: #f8fbf9; color: var(--ink); }
+    .decision-panel h2 { margin: 0; font-size: 21px; letter-spacing: -.02em; }
+    .decision-panel > p { margin: 7px 0 22px; color: var(--muted); font-size: 13px; }
+    .stage-list { display: grid; gap: 5px; }
+    .stage {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 11px;
+      align-items: center;
+      padding: 10px 8px;
+      border-radius: 11px;
+      transition: background .25s, transform .25s;
+    }
+    .stage.is-running { background: var(--wash); transform: translateX(3px); }
+    .stage-icon { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--wash); color: var(--green); }
+    .stage.is-running .stage-icon { background: var(--lime); color: var(--ink); }
+    .stage strong { display: block; font-size: 13px; }
+    .stage small { display: block; color: var(--muted); font-size: 11px; }
+    .stage-state { color: var(--green); font-size: 11px; font-weight: 700; }
+    .stage.is-running .stage-state::after { content: "分析中"; }
+    .stage.is-running .stage-state { font-size: 0; }
+    .decision-panel .btn { width: 100%; margin-top: 16px; }
+
+    .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 32px 0 14px; }
+    .section-heading h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+    .section-heading p { margin: 5px 0 0; color: var(--muted); }
+    .text-link { border: 0; background: transparent; color: var(--green); font-weight: 700; cursor: pointer; padding: 8px 0; }
+
+    .signal-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 16px; }
+    .signal-panel, .risk-panel, .plans-panel {
+      border-radius: var(--radius);
+      background: var(--white);
+      box-shadow: inset 0 0 0 1px var(--line);
+    }
+    .signal-panel { padding: 22px; min-width: 0; }
+    .panel-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .panel-top h3, .risk-panel h3 { margin: 0; font-size: 17px; }
+    .panel-top p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .chart-tabs { display: flex; padding: 4px; border-radius: 10px; background: var(--wash); }
+    .chart-tab { border: 0; background: transparent; border-radius: 8px; padding: 7px 10px; color: var(--muted); cursor: pointer; font-size: 12px; }
+    .chart-tab.is-active { background: var(--white); color: var(--ink); box-shadow: 0 2px 8px rgba(24,49,45,.09); }
+    .metric-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 18px 0 6px; background: var(--line); }
+    .metric { background: var(--white); padding: 10px 14px; }
+    .metric:first-child { padding-left: 0; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; }
+    .metric strong { font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+    .metric em { font-style: normal; color: var(--red); font-size: 11px; margin-left: 5px; }
+    .trend-canvas { position: relative; min-height: 210px; padding-top: 10px; }
+    .trend-canvas svg { width: 100%; height: 210px; }
+    .trend-note {
+      position: absolute;
+      right: 3%;
+      top: 20%;
+      padding: 9px 11px;
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 11px;
+      box-shadow: 0 8px 20px rgba(24,49,45,.2);
+    }
+    .trend-note b { color: var(--lime); }
+
+    .risk-panel { padding: 22px; }
+    .risk-summary { margin: 14px 0 19px; padding: 15px; border-radius: 12px; background: var(--orange-wash); }
+    .risk-summary strong { display: flex; align-items: baseline; gap: 8px; font-size: 26px; color: #7d3d19; }
+    .risk-summary span { font-size: 12px; font-weight: 500; color: #8f5637; }
+    .risk-summary p { margin: 4px 0 0; color: #75472f; font-size: 12px; }
+    .risk-list { display: grid; gap: 15px; }
+    .risk-item { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; }
+    .risk-item strong { font-size: 13px; }
+    .risk-item b { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .risk-bar { grid-column: 1 / -1; height: 6px; border-radius: 6px; background: var(--wash); overflow: hidden; }
+    .risk-bar i { display: block; height: 100%; border-radius: inherit; background: var(--green); transform-origin: left; animation: grow .8s var(--ease) both; }
+    @keyframes grow { from { transform: scaleX(0); } }
+    .risk-item:nth-child(2) .risk-bar i { background: var(--orange); }
+    .risk-item:nth-child(3) .risk-bar i { background: var(--blue); }
+
+    .plans-panel { overflow: hidden; }
+    .plan-switcher { display: flex; align-items: center; gap: 4px; padding: 8px; background: var(--wash); }
+    .plan-switcher button { flex: 1; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 700; }
+    .plan-switcher button.is-active { background: var(--white); color: var(--ink); box-shadow: 0 4px 12px rgba(24,49,45,.09); }
+    .plan-body { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 292px; }
+    .plan-summary { padding: 24px; background: #fbfcfb; border-right: 1px solid var(--line); }
+    .plan-summary span { color: var(--muted); font-size: 12px; }
+    .plan-summary h3 { margin: 6px 0 9px; font-size: 24px; letter-spacing: -.03em; }
+    .plan-summary p { margin: 0; color: var(--muted); font-size: 12px; }
+    .plan-count { margin: 24px 0 18px; font-size: 38px; line-height: 1; font-weight: 800; }
+    .plan-count small { font-size: 13px; color: var(--muted); font-weight: 500; }
+    .plan-items { padding: 10px 20px; }
+    .plan-item {
+      display: grid;
+      grid-template-columns: 40px minmax(150px, 1fr) minmax(210px, 1.4fr) auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 66px;
+      border-bottom: 1px solid var(--line);
+    }
+    .plan-item:last-child { border-bottom: 0; }
+    .plan-number { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--wash); color: var(--green); font-weight: 800; }
+    .plan-name strong { display: block; }
+    .plan-name small, .plan-reason { color: var(--muted); font-size: 12px; }
+    .status { padding: 5px 9px; border-radius: 999px; background: var(--mint); color: var(--green-2); font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .status.warning { background: var(--orange-wash); color: #8d4e29; }
+
+    .system-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-top: 16px;
+      padding: 15px 18px;
+      border: 1px dashed #b8c7c1;
+      border-radius: 12px;
+      color: var(--ink-2);
+      background: rgba(255,255,255,.55);
+    }
+    .system-note p { margin: 0; }
+    .system-note strong { display: block; }
+    .system-note span { color: var(--muted); font-size: 12px; }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(14, 31, 27, .36);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s;
+    }
+    .overlay.is-open { opacity: 1; pointer-events: auto; }
+    .modal {
+      width: min(720px, 100%);
+      max-height: min(760px, 90vh);
+      overflow: auto;
+      border-radius: 16px;
+      background: var(--white);
+      box-shadow: 0 28px 80px rgba(15,35,30,.28);
+      transform: translateY(16px) scale(.98);
+      transition: transform .28s var(--ease);
+    }
+    .overlay.is-open .modal { transform: none; }
+    .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; font-size: 22px; }
+    .modal-head p { margin: 5px 0 0; color: var(--muted); }
+    .modal-body { padding: 24px; }
+    .evidence-path { display: grid; gap: 0; }
+    .evidence-step { display: grid; grid-template-columns: 32px 1fr; gap: 12px; padding-bottom: 18px; }
+    .evidence-step:not(:last-child) .evidence-index::after { content: ""; display: block; width: 1px; height: calc(100% + 3px); margin: 6px auto 0; background: var(--line); }
+    .evidence-index { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--wash); color: var(--green); font-weight: 800; }
+    .evidence-step h3 { margin: 2px 0 5px; font-size: 15px; }
+    .evidence-step p { margin: 0; color: var(--muted); font-size: 13px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px 22px; }
+
+    .drawer {
+      position: fixed;
+      inset: 0 0 0 auto;
+      z-index: 70;
+      width: min(440px, 100%);
+      display: flex;
+      flex-direction: column;
+      background: var(--white);
+      box-shadow: -18px 0 58px rgba(15,35,30,.18);
+      transform: translateX(105%);
+      transition: transform .35s var(--ease);
+    }
+    .drawer.is-open { transform: none; }
+    .drawer-head { padding: 22px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
+    .drawer-head h2 { margin: 0; font-size: 21px; }
+    .drawer-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .drawer-body { flex: 1; overflow: auto; padding: 20px 22px; }
+    .lesion-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .film {
+      min-height: 160px;
+      position: relative;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: #dcefe8;
+      background: #18312d;
+    }
+    .film::before, .film::after { content: ""; position: absolute; border: 1px solid rgba(217,238,130,.35); border-radius: 50%; }
+    .film::before { width: 74px; height: 118px; left: 25px; top: 20px; }
+    .film::after { width: 74px; height: 118px; right: 25px; top: 20px; }
+    .film i { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 0 8px rgba(243,154,90,.13); z-index: 1; }
+    .film span { position: absolute; left: 10px; bottom: 8px; font-size: 10px; color: #aac0b9; }
+    .comparison-note { margin: 14px 0 22px; padding: 14px; border-radius: 12px; background: var(--wash); }
+    .comparison-note strong { display: block; }
+    .comparison-note p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .fact-list { display: grid; gap: 10px; }
+    .fact-row { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+    .fact-row span { color: var(--muted); }
+    .drawer-actions { padding: 18px 22px; border-top: 1px solid var(--line); }
+    .drawer-actions .btn { width: 100%; }
+
+    .chat-drawer .drawer-body { display: flex; flex-direction: column; gap: 12px; background: #f7faf8; }
+    .chat-message { max-width: 86%; padding: 12px 14px; border-radius: 13px; background: var(--white); box-shadow: inset 0 0 0 1px var(--line); }
+    .chat-message.user { margin-left: auto; background: var(--ink); color: #fff; box-shadow: none; }
+    .chat-message p { margin: 0; }
+    .chat-message small { display: block; margin-top: 5px; color: var(--muted); }
+    .chat-message.user small { color: #b8cac4; }
+    .quick-asks { display: flex; flex-wrap: wrap; gap: 7px; }
+    .quick-asks button { border: 1px solid var(--line); border-radius: 999px; padding: 8px 10px; background: var(--white); cursor: pointer; color: var(--ink-2); font-size: 12px; }
+    .chat-compose { display: grid; grid-template-columns: 1fr 42px; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--line); }
+    .chat-compose input { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 0 13px; background: #fbfdfc; }
+
+    .popover { position: absolute; right: 44px; top: 58px; z-index: 45; width: 210px; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); box-shadow: var(--shadow); opacity: 0; pointer-events: none; transform: translateY(-5px); transition: .2s; }
+    .popover.is-open { opacity: 1; pointer-events: auto; transform: none; }
+    .popover button { width: 100%; border: 0; border-radius: 8px; background: transparent; padding: 10px 11px; text-align: left; cursor: pointer; }
+    .popover button:hover { background: var(--wash); }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      z-index: 100;
+      translate: -50% 14px;
+      padding: 11px 16px;
+      border-radius: 11px;
+      background: var(--ink);
+      color: #fff;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, translate .25s var(--ease);
+    }
+    .toast.is-visible { opacity: 1; translate: -50% 0; }
+    .mobile-backdrop { display: none; }
+
+    @media (max-width: 1100px) {
+      .decision-board, .signal-grid { grid-template-columns: 1fr; }
+      .decision-panel { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; align-items: start; }
+      .decision-panel .btn { grid-column: 1 / -1; }
+      .stage-list { grid-row: span 2; }
+      .plan-body { grid-template-columns: 220px minmax(0,1fr); }
+      .plan-item { grid-template-columns: 36px minmax(130px,1fr) auto; }
+      .plan-reason { grid-column: 2 / -1; margin-top: -10px; padding-bottom: 10px; }
+    }
+    @media (max-width: 780px) {
+      .app-shell { display: block; }
+      .workspace { width: 100%; }
+      .rail { width: 76px; transform: translateX(-110%); transition: transform .3s var(--ease); }
+      .rail.is-open { transform: none; }
+      .icon-button.mobile-menu { display: grid; }
+      .wordmark { min-width: 0; }
+      .wordmark span, .crumb, .commandbar > .command-actions .demo-tag { display: none; }
+      .commandbar { height: 64px; padding: 0 16px; gap: 12px; }
+      .command-actions { margin-left: auto; }
+      .command-actions .btn { min-width: 42px; padding: 0 11px; }
+      .command-actions .btn span { font-size: 0; }
+      .command-actions .btn span::after { content: "方案"; font-size: 12px; }
+      .mobile-safety {
+        position: sticky;
+        top: 64px;
+        z-index: 19;
+        min-height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 5px 12px;
+        border-bottom: 1px solid var(--line);
+        background: #fff8ef;
+        color: #75472f;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .mobile-safety i { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
+      .page { padding: 22px 14px 36px; }
+      .page-heading { align-items: flex-start; flex-direction: column; }
+      .heading-actions { width: 100%; justify-content: stretch; }
+      .heading-actions .btn { flex: 1; }
+      .decision-board { min-height: 0; }
+      .trajectory-field { padding: 22px 18px; }
+      .confidence { display: none; }
+      .trajectory-chart svg { height: 170px; }
+      .trajectory-chart .chart-year, .trajectory-chart .chart-label { display: none; }
+      .mobile-chart-note { display: block; margin: -8px 0 2px; color: var(--lime); font-size: 11px; font-weight: 700; text-align: right; }
+      .mobile-chart-years { display: flex; justify-content: space-between; margin: -11px 7.5% 3px; color: #c9ddd6; font-size: 11px; }
+      .decision-panel { display: block; padding: 20px 18px; }
+      .stage-list { margin-top: 15px; }
+      .panel-top { align-items: flex-start; flex-direction: column; }
+      .metric-strip { grid-template-columns: 1fr; background: transparent; }
+      .metric { padding: 8px 0; border-bottom: 1px solid var(--line); }
+      .plan-body { grid-template-columns: 1fr; }
+      .plan-summary { border-right: 0; border-bottom: 1px solid var(--line); }
+      .plan-count { margin: 15px 0 10px; }
+      .plan-item { grid-template-columns: 36px 1fr auto; padding: 10px 0; }
+      .plan-reason { grid-column: 2 / -1; }
+      .mobile-backdrop { position: fixed; inset: 0; z-index: 29; background: rgba(14,31,27,.34); }
+      .mobile-backdrop.is-open { display: block; }
+      .toast { width: calc(100% - 28px); text-align: center; }
+    }
+    @media (max-width: 480px) {
+      .page-heading h1 { font-size: 30px; }
+      .subject-row { align-items: flex-start; }
+      .subject-orbit { width: 42px; height: 42px; }
+      .legend { gap: 10px; }
+      .plan-switcher button { font-size: 12px; }
+      .plan-items { padding-inline: 14px; }
+      .plan-item { grid-template-columns: 32px 1fr; }
+      .plan-item .status { grid-column: 2; justify-self: start; }
+      .lesion-compare { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    }
+    @media print {
+      .rail, .commandbar, .heading-actions, .text-link, .toast, .drawer, .overlay { display: none !important; }
+      .app-shell { display: block; }
+      .workspace { grid-column: 1; }
+      .page { max-width: none; padding: 0; }
+      .decision-board, .signal-panel, .risk-panel, .plans-panel { break-inside: avoid; box-shadow: none; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+    THESIS: A longitudinal evidence board turns years of scattered health records into one visible decision path; it refuses the generic health-dashboard wall of equal cards.
+    OWN-WORLD: Bright clinical paper, deep botanical ink, mineral green, lime decision flags, orange uncertainty marks, hairline evidence rules, and a continuous horizontal trajectory.
+    STORY: See what changed, understand how prediction becomes recommendation, inspect safety screening, then open a three-depth plan or plain-language explanation.
+    FIRST VIEWPORT: A left instrument rail, a 70%-width multi-year trajectory field, and a right decision pipeline; the primary “生成本次方案” action terminates the pipeline.
+    FORM: Multidisciplinary case-conference evidence board, seventh grounded direction, seed 4a50ebc5.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  -->
+  <div class="app-shell">
+    <aside class="rail" id="rail" aria-label="主导航">
+      <div class="brand-mark" aria-label="循影定检">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+          <path d="M4 8.5C8.4 3.3 14.8 2 23.5 4.7c-1.9 8.4-6 14.2-12.3 17.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M5 20.5c4.6-6.8 10-10.3 16.2-10.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="6" cy="20" r="2.3" fill="currentColor"/>
+        </svg>
+      </div>
+      <nav class="rail-nav">
+        <button class="rail-button is-active" type="button" aria-label="决策总览" data-action="overview">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="rail-button" type="button" aria-label="健康轨迹" data-action="trend">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18 9 13l3 3 7-9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/><circle cx="9" cy="13" r="1.5" fill="currentColor"/><circle cx="12" cy="16" r="1.5" fill="currentColor"/><circle cx="19" cy="7" r="1.5" fill="currentColor"/></svg>
+        </button>
+        <button class="rail-button" type="button" aria-label="影像随访" data-action="imaging">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M9 8.5c-1.4 1.6-2.1 3.4-2.1 5.3 0 2.2 1.1 3.4 2.6 3.4 1.2 0 2-.8 2.5-2.2.5 1.4 1.3 2.2 2.5 2.2 1.5 0 2.6-1.2 2.6-3.4 0-1.9-.7-3.7-2.1-5.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button class="rail-button" type="button" aria-label="风险预测" data-action="risk">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 4.5 6v5.3c0 4.5 3.1 7.6 7.5 9.7 4.4-2.1 7.5-5.2 7.5-9.7V6L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 13.5h2l1.3-4 1.8 6 1.1-3h1.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="rail-button" type="button" aria-label="方案推荐" data-action="plans">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4h12v16H6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 9h6M9 13h6M9 17h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="m15.5 3 1.2 2.2 2.3 1.1-2.3 1.1-1.2 2.2-1.2-2.2L12 6.3l2.3-1.1L15.5 3Z" fill="currentColor"/></svg>
+        </button>
+        <button class="rail-button" type="button" aria-label="智能解释" data-action="chat">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5h14v11H9l-4 3V5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 9.5h7M8.5 12.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button class="rail-button" type="button" aria-label="报告中心" data-action="report">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 3.5h8l4 4V20H6V3.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </nav>
+      <div class="rail-spacer"></div>
+      <button class="rail-button" type="button" aria-label="系统设置" data-action="settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1A7.4 7.4 0 0 0 14.4 5L14 2.5h-4L9.6 5a7.4 7.4 0 0 0-2.1 1.8l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1A7.4 7.4 0 0 0 9.6 19l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.1-1.8l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="avatar" aria-label="演示用户">研</div>
+    </aside>
+
+    <main class="workspace">
+      <header class="commandbar">
+        <button class="icon-button mobile-menu" id="mobileMenu" type="button" aria-label="打开导航" aria-expanded="false" aria-controls="rail">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <div class="wordmark"><strong>循影定检</strong><span>个性化体检辅助决策系统</span></div>
+        <div class="crumb">受检者档案 / A-0318 / <span id="currentView">决策总览</span></div>
+        <div class="command-actions">
+          <div class="demo-tag"><i></i> 演示数据 · 非医疗建议</div>
+          <button class="icon-button" id="moreActions" type="button" aria-label="更多操作" aria-expanded="false">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>
+          </button>
+          <button class="btn btn-primary" id="topGenerate" type="button" aria-label="生成本次方案">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 3 1.8 4.5L18 9.2l-4.2 1.7L12 16l-1.8-5.1L6 9.2l4.2-1.7L12 3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m18.5 15 .8 2.1 2.2.9-2.2.9-.8 2.1-.8-2.1-2.2-.9 2.2-.9.8-2.1Z" fill="currentColor"/></svg>
+            <span>生成方案</span>
+          </button>
+        </div>
+        <div class="popover" id="actionsPopover" role="menu">
+          <button type="button" data-pop-action="tour">开启演示导览</button>
+          <button type="button" data-pop-action="print">打印 / 存为 PDF</button>
+          <button type="button" data-pop-action="reset">重置演示状态</button>
+        </div>
+      </header>
+      <div class="mobile-safety"><i></i>演示数据 · 非医疗建议 · 结果需专业确认</div>
+
+      <div class="page">
+        <section class="page-heading" id="overview">
+          <div>
+            <h1>把多年健康变化，变成下一次最值得检查的项目</h1>
+            <p>从纵向轨迹到风险、推荐与规则筛选，让每一项建议都能追溯到证据，也能明确表达不确定性。</p>
+          </div>
+          <div class="heading-actions">
+            <button class="btn btn-secondary" id="openEvidence" type="button">查看完整依据</button>
+            <button class="btn btn-lime" id="openChat" type="button">询问智能解释</button>
+          </div>
+        </section>
+
+        <section class="decision-board" aria-label="纵向健康决策轨迹">
+          <div class="trajectory-field">
+            <div class="subject-row">
+              <div class="subject">
+                <div class="subject-orbit">A</div>
+                <div><strong>受检者 A-0318</strong><span>4 年健康轨迹 · 12 项指标 · 2 条影像随访链</span></div>
+              </div>
+              <div class="confidence"><b>86%</b><span>演示推荐证据完整度</span></div>
+            </div>
+
+            <div class="trajectory-chart">
+              <svg viewBox="0 0 770 190" role="img" aria-label="2022 至 2025 年三条健康变化轨迹演示图">
+                <defs>
+                  <linearGradient id="areaGreen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d9ee82" stop-opacity=".26"/><stop offset="1" stop-color="#d9ee82" stop-opacity="0"/></linearGradient>
+                  <filter id="softGlow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <g opacity=".19" stroke="#d7e8e1">
+                  <path d="M18 36H745M18 82H745M18 128H745M18 164H745"/>
+                  <path d="M90 22V164M285 22V164M480 22V164M675 22V164" stroke-dasharray="3 6"/>
+                </g>
+                <path d="M90 124 C165 119 220 128 285 113 S410 84 480 96 S590 53 675 48 L675 164H90Z" fill="url(#areaGreen)"/>
+                <path d="M90 124 C165 119 220 128 285 113 S410 84 480 96 S590 53 675 48" fill="none" stroke="#d9ee82" stroke-width="4" stroke-linecap="round"/>
+                <path d="M90 96 C165 100 215 82 285 88 S410 103 480 82 S590 73 675 76" fill="none" stroke="#f39a5a" stroke-width="3" stroke-linecap="round"/>
+                <path d="M90 60 C160 58 220 61 285 60 S410 62 480 61 S590 55 675 54" fill="none" stroke="#a8c0ff" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 8"/>
+                <g fill="#d9ee82"><circle cx="90" cy="124" r="4"/><circle cx="285" cy="113" r="4"/><circle cx="480" cy="96" r="4"/><circle class="chart-dot" cx="675" cy="48" r="7" filter="url(#softGlow)"/></g>
+                <g fill="#f39a5a"><circle cx="90" cy="96" r="4"/><circle cx="285" cy="88" r="4"/><circle cx="480" cy="82" r="4"/><circle cx="675" cy="76" r="5"/></g>
+                <g fill="#a8c0ff"><circle cx="90" cy="60" r="4"/><circle cx="285" cy="60" r="4"/><circle cx="480" cy="61" r="4"/><circle cx="675" cy="54" r="5"/></g>
+                <text class="chart-label" x="690" y="46">重点变化</text>
+                <text class="chart-year" x="75" y="184">2022</text><text class="chart-year" x="270" y="184">2023</text><text class="chart-year" x="465" y="184">2024</text><text class="chart-year" x="660" y="184">2025</text>
+              </svg>
+              <div class="mobile-chart-note">2025 · 重点变化</div>
+              <div class="mobile-chart-years" aria-hidden="true"><span>2022</span><span>2023</span><span>2024</span><span>2025</span></div>
+            </div>
+            <div class="legend"><span><i class="l1"></i>代谢指标趋势</span><span><i class="l2"></i>肝功能趋势</span><span><i class="l3"></i>影像病灶随访</span></div>
+          </div>
+
+          <aside class="decision-panel">
+            <div><h2>本次决策路径</h2><p>模型计算与医疗规则分层协作，过程可核验。</p></div>
+            <div class="stage-list" id="stageList">
+              <div class="stage" data-stage="0"><div class="stage-icon">01</div><div><strong>纵向特征整理</strong><small>指标、病灶与复查间隔</small></div><span class="stage-state">已就绪</span></div>
+              <div class="stage" data-stage="1"><div class="stage-icon">02</div><div><strong>LightGBM 风险预测</strong><small>风险概率与置信信息</small></div><span class="stage-state">已完成</span></div>
+              <div class="stage" data-stage="2"><div class="stage-icon">03</div><div><strong>DeepFM 项目匹配</strong><small>受检者 × 候选项目评分</small></div><span class="stage-state">已完成</span></div>
+              <div class="stage" data-stage="3"><div class="stage-icon">04</div><div><strong>医疗规则筛选</strong><small>间隔、重复与辐射提醒</small></div><span class="stage-state">已通过</span></div>
+            </div>
+            <button class="btn btn-lime" id="generatePlan" type="button">重新生成本次方案</button>
+          </aside>
+        </section>
+
+        <section id="trend">
+          <div class="section-heading"><div><h2>变化比单点数值更重要</h2><p>用连续趋势定位真正需要关注的方向。</p></div><button class="text-link" type="button" id="toggleAllMetrics">展开全部指标 →</button></div>
+          <div class="signal-grid">
+            <article class="signal-panel">
+              <div class="panel-top">
+                <div><h3>关键指标趋势</h3><p>演示数据 · 已完成单位与时间标准化</p></div>
+                <div class="chart-tabs" role="tablist" aria-label="指标趋势切换"><button class="chart-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="trendChartPanel" tabindex="0" data-metric="glucose">代谢</button><button class="chart-tab" type="button" role="tab" aria-selected="false" aria-controls="trendChartPanel" tabindex="-1" data-metric="liver">肝功能</button><button class="chart-tab" type="button" role="tab" aria-selected="false" aria-controls="trendChartPanel" tabindex="-1" data-metric="lipid">血脂</button></div>
+              </div>
+              <div class="metric-strip"><div class="metric"><span>当前示例值</span><strong id="metricCurrent">6.4</strong><em id="metricDelta">↑ 12%</em></div><div class="metric"><span>连续异常</span><strong id="metricYears">2 年</strong></div><div class="metric"><span>趋势判断</span><strong id="metricTrend">持续上行</strong></div></div>
+              <div class="trend-canvas" id="trendChartPanel" role="tabpanel">
+                <svg id="trendSvg" viewBox="0 0 760 210" role="img" aria-label="关键指标趋势演示图">
+                  <g stroke="#e0e7e3"><path d="M24 38H730M24 90H730M24 142H730M24 194H730"/><path d="M90 25V194M280 25V194M470 25V194M660 25V194" stroke-dasharray="3 6"/></g>
+                  <path id="trendArea" d="M90 160 C170 153 220 141 280 135 S400 110 470 116 S590 64 660 52 L660 194H90Z" fill="#cce6dc" opacity=".55"/>
+                  <path id="trendLine" d="M90 160 C170 153 220 141 280 135 S400 110 470 116 S590 64 660 52" fill="none" stroke="#0d6f61" stroke-width="4" stroke-linecap="round"/>
+                  <g id="trendDots" fill="#0d6f61"><circle cx="90" cy="160" r="5"/><circle cx="280" cy="135" r="5"/><circle cx="470" cy="116" r="5"/><circle cx="660" cy="52" r="7"/></g>
+                  <g fill="#5c706b" font-size="11"><text x="75" y="207">2022</text><text x="265" y="207">2023</text><text x="455" y="207">2024</text><text x="645" y="207">2025</text></g>
+                </svg>
+                <div class="trend-note"><b>变化拐点</b><br>近两年斜率增加</div>
+              </div>
+            </article>
+
+            <aside class="risk-panel" id="risk">
+              <h3>风险预测摘要</h3>
+              <div class="risk-summary"><strong>中度关注 <span>需结合专业判断</span></strong><p>纵向特征使当前变化更值得跟进，但不构成诊断结论。</p></div>
+              <div class="risk-list">
+                <div class="risk-item"><strong>糖代谢异常倾向</strong><b>68%</b><div class="risk-bar"><i style="width:68%"></i></div></div>
+                <div class="risk-item"><strong>脂肪肝进展倾向</strong><b>54%</b><div class="risk-bar"><i style="width:54%"></i></div></div>
+                <div class="risk-item"><strong>血脂异常倾向</strong><b>41%</b><div class="risk-bar"><i style="width:41%"></i></div></div>
+              </div>
+              <button class="btn btn-ghost" id="riskExplain" type="button">查看模型贡献因素 →</button>
+            </aside>
+          </div>
+        </section>
+
+        <section id="plans">
+          <div class="section-heading"><div><h2>一份依据，三种检查深度</h2><p>在风险覆盖、检查成本与安全规则之间保持透明平衡。</p></div><button class="text-link" type="button" id="comparePlans">比较三档差异 →</button></div>
+          <div class="plans-panel">
+            <div class="plan-switcher" role="tablist" aria-label="三档体检方案"><button class="plan-option" type="button" role="tab" aria-selected="false" aria-controls="planBody" tabindex="-1" data-plan="lite">精简方案</button><button class="plan-option is-active" type="button" role="tab" aria-selected="true" aria-controls="planBody" tabindex="0" data-plan="standard">标准方案 · 推荐</button><button class="plan-option" type="button" role="tab" aria-selected="false" aria-controls="planBody" tabindex="-1" data-plan="deep">深入方案</button></div>
+            <div class="plan-body" id="planBody" role="tabpanel">
+              <aside class="plan-summary"><span id="planLabel">覆盖主要风险</span><h3 id="planTitle">标准方案</h3><p id="planDescription">兼顾重点异常、历史连续性与项目重复控制，适合作为本次辅助建议。</p><div class="plan-count"><span id="planCount">8</span> <small>项检查</small></div><button class="btn btn-primary" id="openReport" type="button">预览方案报告</button></aside>
+              <div class="plan-items" id="planItems" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="system-note">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 4.5 6v5.3c0 4.5 3.1 7.6 7.5 9.7 4.4-2.1 7.5-5.2 7.5-9.7V6L12 3Z" stroke="#0d6f61" stroke-width="1.8"/><path d="m8.5 12 2.2 2.2 4.8-5" stroke="#0d6f61" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <p><strong>安全规则已提示</strong><span>系统已检查建议复查间隔、项目功能重复与辐射属性；最终检查方案需由专业人员结合实际情况确认。</span></p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="mobile-backdrop" id="mobileBackdrop"></div>
+
+  <div class="overlay" id="reportModal" role="dialog" aria-modal="true" aria-labelledby="reportTitle" aria-hidden="true" inert>
+    <div class="modal">
+      <div class="modal-head"><div><h2 id="reportTitle">标准方案 · 推荐依据摘要</h2><p>演示报告结构，用于汇报呈现与交互预览。</p></div><button class="icon-button" type="button" data-close="reportModal" aria-label="关闭报告"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+      <div class="modal-body">
+        <div class="evidence-path">
+          <div class="evidence-step"><div class="evidence-index">1</div><div><h3>看懂过去 · 纵向特征</h3><p>识别连续异常、变化斜率、病灶稳定性与距离上次检查时间，并保留无法可靠匹配的信息。</p></div></div>
+          <div class="evidence-step"><div class="evidence-index">2</div><div><h3>预测风险 · LightGBM</h3><p>输出风险概率与置信信息；该结果只用于辅助排序，不构成疾病诊断。</p></div></div>
+          <div class="evidence-step"><div class="evidence-index">3</div><div><h3>匹配项目 · DeepFM</h3><p>综合个体信息、历史检查与风险特征，对候选项目进行匹配评分和排序。</p></div></div>
+          <div class="evidence-step"><div class="evidence-index">4</div><div><h3>安全筛选 · 医疗规则引擎</h3><p>检查复查间隔、功能重复和辐射属性，保留需要专业人员核验的边界。</p></div></div>
+        </div>
+      </div>
+      <div class="modal-actions"><button class="btn btn-secondary" type="button" data-close="reportModal">返回系统</button><button class="btn btn-primary" type="button" id="printReport">打印 / 存为 PDF</button></div>
+    </div>
+  </div>
+
+  <aside class="drawer" id="evidenceDrawer" aria-label="完整推荐依据" aria-hidden="true" inert>
+    <div class="drawer-head"><div><h2>影像病灶随访链</h2><p>纵向匹配演示 · 待专业人员复核</p></div><button class="icon-button" type="button" data-close-drawer="evidenceDrawer" aria-label="关闭依据面板"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+    <div class="drawer-body">
+      <div class="lesion-compare"><div class="film"><i></i><span>2024 · 示意影像</span></div><div class="film"><i style="width:13px;height:13px"></i><span>2025 · 示意影像</span></div></div>
+      <div class="comparison-note"><strong>变化提示：体积趋势需复核</strong><p>系统仅使用已确认的影像报告结果建立跨年份对应关系，不重新训练影像识别模型。</p></div>
+      <div class="fact-list"><div class="fact-row"><span>病灶类型</span><strong>示例肺结节</strong></div><div class="fact-row"><span>连续出现</span><strong>2 次</strong></div><div class="fact-row"><span>距离上次检查</span><strong>12 个月</strong></div><div class="fact-row"><span>匹配可信度</span><strong>待核验</strong></div><div class="fact-row"><span>关联建议</span><strong>专业随访评估</strong></div></div>
+    </div>
+    <div class="drawer-actions"><button class="btn btn-lime" type="button" id="markReviewed">标记为已查看</button></div>
+  </aside>
+
+  <aside class="drawer chat-drawer" id="chatDrawer" aria-label="智能解释" aria-hidden="true" inert>
+    <div class="drawer-head"><div><h2>智能解释</h2><p>大模型负责理解与解释，不直接决定检查项目。</p></div><button class="icon-button" type="button" data-close-drawer="chatDrawer" aria-label="关闭智能解释"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+    <div class="drawer-body" id="chatMessages">
+      <div class="chat-message"><p>你好，我可以基于系统已经生成的结构化结果，解释今年为什么推荐这些检查。</p><small>所有回答均为演示内容</small></div>
+      <div class="quick-asks"><button type="button">为什么推荐标准方案？</button><button type="button">哪些变化最明显？</button><button type="button">哪些信息需要核验？</button></div>
+    </div>
+    <form class="chat-compose" id="chatForm"><input id="chatInput" aria-label="输入问题" placeholder="输入你想了解的问题…" autocomplete="off"><button class="icon-button" type="submit" aria-label="发送"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 17 8-17 8 3-8-3-8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7 12h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button></form>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">操作已完成</div>
+
+  <script>
+    (() => {
+      const $ = (selector, scope = document) => scope.querySelector(selector);
+      const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
+      const toast = $('#toast');
+      let toastTimer;
+      const showToast = (message) => {
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 2400);
+      };
+
+      const plans = {
+        lite: {
+          label: '聚焦必要项目', title: '精简方案', description: '优先覆盖最明确的纵向变化，控制检查数量与重复率。', count: 5,
+          items: [
+            ['空腹血糖 + HbA1c', '代谢指标连续上行', '优先'],
+            ['肝功能组合', '历史异常需要连续观察', '优先'],
+            ['腹部超声', '关联脂肪肝变化', '建议'],
+            ['血脂四项', '用于补充心代谢风险', '建议']
+          ]
+        },
+        standard: {
+          label: '覆盖主要风险', title: '标准方案', description: '兼顾重点异常、历史连续性与项目重复控制，适合作为本次辅助建议。', count: 8,
+          items: [
+            ['空腹血糖 + HbA1c', '代谢趋势连续上行，预测风险较高', '优先'],
+            ['肝功能组合', '历史异常与影像变化共同支持', '优先'],
+            ['腹部超声', '复核脂肪肝纵向变化', '建议'],
+            ['低剂量胸部 CT 评估', '随访间隔已满足，需专业确认', '待核验']
+          ]
+        },
+        deep: {
+          label: '拓展风险覆盖', title: '深入方案', description: '在标准方案基础上增加更广的风险观察范围，保留必要的安全提示。', count: 12,
+          items: [
+            ['标准方案全部项目', '保留主要风险与连续随访路径', '已包含'],
+            ['甲状腺功能组合', '补充历史边界信息', '可选'],
+            ['心血管风险评估', '扩展心代谢覆盖范围', '可选'],
+            ['专业影像随访评估', '涉及影像匹配不确定性', '待核验']
+          ]
+        }
+      };
+
+      const renderPlan = (key) => {
+        const plan = plans[key];
+        $('#planLabel').textContent = plan.label;
+        $('#planTitle').textContent = plan.title;
+        $('#planDescription').textContent = plan.description;
+        $('#planCount').textContent = plan.count;
+        $('#planItems').innerHTML = plan.items.map((item, index) => `
+          <div class="plan-item">
+            <div class="plan-number">${String(index + 1).padStart(2, '0')}</div>
+            <div class="plan-name"><strong>${item[0]}</strong><small>推荐项目 · 演示</small></div>
+            <div class="plan-reason">${item[1]}</div>
+            <span class="status ${item[2] === '待核验' ? 'warning' : ''}">${item[2]}</span>
+          </div>`).join('');
+      };
+      renderPlan('standard');
+
+      const selectTab = (buttons, activeButton) => {
+        buttons.forEach(item => {
+          const selected = item === activeButton;
+          item.classList.toggle('is-active', selected);
+          item.setAttribute('aria-selected', String(selected));
+          item.tabIndex = selected ? 0 : -1;
+        });
+      };
+      const enableRovingTabs = (buttons) => {
+        buttons.forEach((button, index) => button.addEventListener('keydown', event => {
+          let nextIndex = null;
+          if (event.key === 'ArrowRight') nextIndex = (index + 1) % buttons.length;
+          if (event.key === 'ArrowLeft') nextIndex = (index - 1 + buttons.length) % buttons.length;
+          if (event.key === 'Home') nextIndex = 0;
+          if (event.key === 'End') nextIndex = buttons.length - 1;
+          if (nextIndex !== null) {
+            event.preventDefault();
+            buttons[nextIndex].focus();
+            buttons[nextIndex].click();
+          }
+        }));
+      };
+
+      const planTabs = $$('.plan-option');
+      enableRovingTabs(planTabs);
+      planTabs.forEach(button => button.addEventListener('click', () => {
+        selectTab(planTabs, button);
+        renderPlan(button.dataset.plan);
+        showToast(`已切换为${plans[button.dataset.plan].title}`);
+      }));
+
+      const metricData = {
+        glucose: { current: '6.4', delta: '↑ 12%', years: '2 年', trend: '持续上行', path: 'M90 160 C170 153 220 141 280 135 S400 110 470 116 S590 64 660 52', color: '#0d6f61', area: '#cce6dc' },
+        liver: { current: '48', delta: '↓ 8%', years: '3 年', trend: '高位回落', path: 'M90 72 C170 58 220 70 280 82 S400 88 470 105 S590 118 660 126', color: '#e57f3b', area: '#ffe1cc' },
+        lipid: { current: '4.9', delta: '↑ 5%', years: '1 年', trend: '轻度波动', path: 'M90 128 C170 110 220 138 280 120 S400 94 470 106 S590 92 660 86', color: '#4263eb', area: '#dfe5ff' }
+      };
+      const chartTabs = $$('.chart-tab');
+      enableRovingTabs(chartTabs);
+      chartTabs.forEach(button => button.addEventListener('click', () => {
+        selectTab(chartTabs, button);
+        const data = metricData[button.dataset.metric];
+        $('#metricCurrent').textContent = data.current;
+        $('#metricDelta').textContent = data.delta;
+        $('#metricYears').textContent = data.years;
+        $('#metricTrend').textContent = data.trend;
+        $('#trendLine').setAttribute('d', data.path);
+        $('#trendLine').setAttribute('stroke', data.color);
+        $('#trendArea').setAttribute('d', `${data.path} L660 194H90Z`);
+        $('#trendArea').setAttribute('fill', data.area);
+        $('#trendDots').setAttribute('fill', data.color);
+        showToast('趋势视图已更新');
+      }));
+
+      let returnFocusElement = null;
+      const rememberFocus = () => {
+        returnFocusElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      };
+      const restoreFocus = () => {
+        const target = returnFocusElement;
+        returnFocusElement = null;
+        if (target?.isConnected) target.focus();
+      };
+      const openDrawer = (id) => {
+        rememberFocus();
+        $$('.drawer').forEach(drawer => {
+          drawer.classList.remove('is-open');
+          drawer.setAttribute('aria-hidden', 'true');
+          drawer.setAttribute('inert', '');
+        });
+        const drawer = document.getElementById(id);
+        drawer.removeAttribute('inert');
+        drawer.classList.add('is-open');
+        drawer.setAttribute('aria-hidden', 'false');
+        setTimeout(() => $('.icon-button', drawer)?.focus(), 50);
+      };
+      const closeDrawer = (id) => {
+        const drawer = document.getElementById(id);
+        drawer.classList.remove('is-open');
+        drawer.setAttribute('aria-hidden', 'true');
+        drawer.setAttribute('inert', '');
+        restoreFocus();
+      };
+      $('#openEvidence').addEventListener('click', () => openDrawer('evidenceDrawer'));
+      $('#openChat').addEventListener('click', () => openDrawer('chatDrawer'));
+      $('#riskExplain').addEventListener('click', () => openDrawer('chatDrawer'));
+      $$('[data-close-drawer]').forEach(button => button.addEventListener('click', () => closeDrawer(button.dataset.closeDrawer)));
+      $('#markReviewed').addEventListener('click', () => { closeDrawer('evidenceDrawer'); showToast('已记录为演示查看状态'); });
+
+      const modal = $('#reportModal');
+      const openReport = () => {
+        rememberFocus();
+        modal.removeAttribute('inert');
+        modal.setAttribute('aria-hidden', 'false');
+        modal.classList.add('is-open');
+        setTimeout(() => $('[data-close="reportModal"]').focus(), 50);
+      };
+      const closeReport = () => {
+        if (!modal.classList.contains('is-open')) return;
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        modal.setAttribute('inert', '');
+        restoreFocus();
+      };
+      $('#openReport').addEventListener('click', openReport);
+      $$('[data-close="reportModal"]').forEach(button => button.addEventListener('click', closeReport));
+      modal.addEventListener('click', event => { if (event.target === modal) closeReport(); });
+      $('#printReport').addEventListener('click', () => window.print());
+
+      const generate = async (button) => {
+        if (button.disabled) return;
+        button.disabled = true;
+        const original = button.innerHTML;
+        button.textContent = '正在生成…';
+        const stages = $$('.stage');
+        stages.forEach(stage => stage.classList.remove('is-running'));
+        for (let i = 0; i < stages.length; i++) {
+          stages[i].classList.add('is-running');
+          await new Promise(resolve => setTimeout(resolve, 420));
+          stages[i].classList.remove('is-running');
+        }
+        button.innerHTML = original;
+        button.disabled = false;
+        showToast('演示筛选完成，方案仍需专业确认');
+        $('#plans').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      $('#generatePlan').addEventListener('click', event => generate(event.currentTarget));
+      $('#topGenerate').addEventListener('click', () => generate($('#generatePlan')));
+
+      const navMap = { overview: ['决策总览', '#overview'], trend: ['健康轨迹', '#trend'], risk: ['风险预测', '#risk'], plans: ['方案推荐', '#plans'] };
+      $$('.rail-button[data-action]').forEach(button => button.addEventListener('click', () => {
+        const action = button.dataset.action;
+        if (navMap[action]) {
+          $$('.rail-button').forEach(item => item.classList.remove('is-active'));
+          button.classList.add('is-active');
+          $('#currentView').textContent = navMap[action][0];
+          $(navMap[action][1]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (action === 'imaging') openDrawer('evidenceDrawer');
+        else if (action === 'chat') openDrawer('chatDrawer');
+        else if (action === 'report') openReport();
+        else showToast('该模块已纳入系统设计，当前为界面演示');
+        if (window.innerWidth <= 780) closeMobileNav();
+      }));
+
+      const rail = $('#rail');
+      const backdrop = $('#mobileBackdrop');
+      const mobileMenu = $('#mobileMenu');
+      const closeMobileNav = () => {
+        rail.classList.remove('is-open');
+        backdrop.classList.remove('is-open');
+        mobileMenu.setAttribute('aria-expanded', 'false');
+        if (window.innerWidth <= 780) rail.setAttribute('inert', '');
+      };
+      const openMobileNav = () => {
+        rail.removeAttribute('inert');
+        rail.classList.add('is-open');
+        backdrop.classList.add('is-open');
+        mobileMenu.setAttribute('aria-expanded', 'true');
+        setTimeout(() => $('.rail-button.is-active', rail)?.focus(), 50);
+      };
+      const syncMobileRail = () => {
+        if (window.innerWidth <= 780 && !rail.classList.contains('is-open')) rail.setAttribute('inert', '');
+        else rail.removeAttribute('inert');
+      };
+      mobileMenu.addEventListener('click', () => rail.classList.contains('is-open') ? closeMobileNav() : openMobileNav());
+      backdrop.addEventListener('click', closeMobileNav);
+      window.addEventListener('resize', syncMobileRail);
+      syncMobileRail();
+
+      const popover = $('#actionsPopover');
+      const closePopover = () => {
+        popover.classList.remove('is-open');
+        $('#moreActions').setAttribute('aria-expanded', 'false');
+      };
+      $('#moreActions').addEventListener('click', () => {
+        popover.classList.toggle('is-open');
+        $('#moreActions').setAttribute('aria-expanded', popover.classList.contains('is-open'));
+      });
+      $$('[data-pop-action]').forEach(button => button.addEventListener('click', () => {
+        closePopover();
+        if (button.dataset.popAction === 'print') window.print();
+        if (button.dataset.popAction === 'tour') { showToast('导览：先看健康轨迹，再生成三档方案'); $('#overview').scrollIntoView({ behavior: 'smooth' }); }
+        if (button.dataset.popAction === 'reset') { renderPlan('standard'); showToast('演示状态已重置'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      }));
+
+      $('#toggleAllMetrics').addEventListener('click', () => showToast('完整指标面板为后续正式系统预留'));
+      $('#comparePlans').addEventListener('click', () => { $$('.plan-option').forEach((button, index) => setTimeout(() => button.animate([{transform:'translateY(0)'},{transform:'translateY(-4px)'},{transform:'translateY(0)'}], {duration:360}), index * 90)); showToast('三档方案差异已高亮'); });
+
+      const sendQuestion = (question) => {
+        if (!question.trim()) return;
+        const messages = $('#chatMessages');
+        const quick = $('.quick-asks', messages);
+        quick?.remove();
+        messages.insertAdjacentHTML('beforeend', `<div class="chat-message user"><p>${question.replace(/[<>&]/g, '')}</p><small>刚刚</small></div>`);
+        setTimeout(() => {
+          messages.insertAdjacentHTML('beforeend', '<div class="chat-message"><p>从演示结果看，推荐主要来自连续指标变化、历史随访间隔和项目匹配评分；医疗规则随后排除了重复项目，并保留了需要专业核验的影像项。</p><small>结构化结果的通俗解释 · 演示</small></div>');
+          messages.scrollTop = messages.scrollHeight;
+        }, 480);
+        messages.scrollTop = messages.scrollHeight;
+      };
+      $('#chatForm').addEventListener('submit', event => { event.preventDefault(); const input = $('#chatInput'); sendQuestion(input.value); input.value = ''; });
+      $$('.quick-asks button').forEach(button => button.addEventListener('click', () => sendQuestion(button.textContent)));
+
+      document.addEventListener('keydown', event => {
+        const activeSurface = modal.classList.contains('is-open')
+          ? $('.modal', modal)
+          : $('.drawer.is-open') || (rail.classList.contains('is-open') ? rail : null);
+        if (event.key === 'Tab' && activeSurface) {
+          const focusable = $$('button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])', activeSurface)
+            .filter(element => !element.hasAttribute('inert') && element.getClientRects().length);
+          if (focusable.length) {
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }
+        }
+        if (event.key === 'Escape') {
+          if (modal.classList.contains('is-open')) closeReport();
+          else if ($('.drawer.is-open')) closeDrawer($('.drawer.is-open').id);
+          else if (rail.classList.contains('is-open')) closeMobileNav();
+          else closePopover();
+        }
+      });
+      document.addEventListener('click', event => {
+        if (!popover.contains(event.target) && !$('#moreActions').contains(event.target)) closePopover();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# Environment and local data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+backend/.venv/
+.venv/
+venv/
+backend/.mypy_cache/
+backend/*.egg-info/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/.env*.local
+node_modules/
+*.tsbuildinfo
+
+# Local double-click launcher state
+.runtime/
+.demo-design/
+
+# Local datasets, model artifacts, and experiment outputs
+data/
+datasets/
+artifacts/
+outputs/
+*.pt
+*.pth
+*.pkl
+*.joblib
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
