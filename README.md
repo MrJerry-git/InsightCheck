@@ -10,6 +10,9 @@
 - [风险任务卡模板](docs/RISK_TASK_TEMPLATE.md)
 - [Synthea 导入与页面操作](docs/SYNTHETIC_IMPORT.md)
 - [Synthea 小样本实测](docs/SYNTHEA_AUDIT.md)
+- [NLST 公开临床子集审计](docs/NLST_AUDIT.md)
+- [NLST 风险任务候选与未决条件](docs/RISK_TASK_NLST.md)
+- [离线风险基线程序](docs/RISK_EXPERIMENTS.md)
 - [开发路线与验收标准](docs/ROADMAP.md)
 - [Git 协作与环境重建](docs/CONTRIBUTING.md)
 
@@ -18,6 +21,8 @@
 截至 2026-09-16，申报书所述合作方数据尚未取得。过渡期优先使用 Synthea 做工程联调，审计 NLST 公开临床子集的纵向实验可行性；二者不能替代合作方人群中的最终验证。下载与字段核验状态见数据计划。
 
 当前已新增 Synthea 小样本适配、CSV 校验、来源记录、事务性幂等导入和 `/health-records` 历史查询页面。本机已导入 108 名合成患者；这不代表风险模型或推荐方案闭环完成。
+
+2026-09-17：NLST 公开临床表审计及 Logistic、随机森林、LightGBM 离线实验程序已完成。程序通过合成夹具测试；真实风险任务尚未冻结，未训练 NLST 模型，也未接入在线风险服务。
 
 ## 产品边界
 

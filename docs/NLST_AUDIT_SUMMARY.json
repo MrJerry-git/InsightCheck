@@ -1,0 +1,475 @@
+{
+  "source_kind": "public_observational",
+  "idc_version": "v24",
+  "dictionary_version": "24.2.2",
+  "audited_at": "2026-09-16T13:35:33.796832+00:00",
+  "files": {
+    "nlst_prsn": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_prsn/000000000000.parquet",
+      "sha256": "3227b367486c44e693b85ad40d8eebbab10b86954a8444135b6b39974d003c7d",
+      "bytes": 745286,
+      "matches_reference_snapshot": true
+    },
+    "nlst_screen": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_screen/000000000000.parquet",
+      "sha256": "7227401ba86444c22793cd0b9d4856b44aa809c64148fcfda23d6330815e51fd",
+      "bytes": 598162,
+      "matches_reference_snapshot": true
+    },
+    "nlst_ctab": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_ctab/000000000000.parquet",
+      "sha256": "0dd091842933e57891da51db0ab045fbfba3307dcf9a9e4ced66cf5369111f9d",
+      "bytes": 813210,
+      "matches_reference_snapshot": true
+    },
+    "nlst_ctabc": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_ctabc/000000000000.parquet",
+      "sha256": "f2ebee5100fe20efbb0b4ac9be0730efc2545c36dfb6bbe29b9af07300a617d8",
+      "bytes": 217211,
+      "matches_reference_snapshot": true
+    },
+    "nlst_canc": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_canc/000000000000.parquet",
+      "sha256": "7902dce4e7daacd9091c612bf534a9a66967098c5eb4219d071c61dd90f3ebfb",
+      "bytes": 51648,
+      "matches_reference_snapshot": true
+    },
+    "clinical_index": {
+      "url": "https://github.com/ImagingDataCommons/idc-index-data/releases/download/24.2.2/clinical_index.parquet",
+      "sha256": "0d0a494711964054862de9a0ddd8c6e3c4bebfa5d10e4e9668e86c644d08aee7",
+      "bytes": 135411,
+      "matches_reference_snapshot": true
+    }
+  },
+  "tables": {
+    "nlst_prsn": {
+      "rows": 53452,
+      "patients": 53452,
+      "duplicate_key_rows": 0,
+      "missing_key_rows": 0,
+      "orphan_patient_rows": 0,
+      "columns": [
+        "dicom_patient_id",
+        "source_batch",
+        "race",
+        "cigsmok",
+        "gender",
+        "age",
+        "loclhil",
+        "locllow",
+        "loclup",
+        "locrhil",
+        "locrlow",
+        "locrmid",
+        "locunk",
+        "locrup",
+        "locoth",
+        "locmed",
+        "loclmsb",
+        "locrmsb",
+        "loccar",
+        "loclin",
+        "lesionsize",
+        "de_type",
+        "de_grade",
+        "de_stag",
+        "scr_res0",
+        "scr_res1",
+        "scr_res2",
+        "scr_iso0",
+        "scr_iso1",
+        "scr_iso2",
+        "cancyr",
+        "can_scr",
+        "canc_rpt_link",
+        "pid",
+        "dataset_version",
+        "scr_days0",
+        "scr_days1",
+        "scr_days2",
+        "candx_days",
+        "canc_free_days",
+        "de_stag_7thed"
+      ],
+      "missing_counts": {
+        "dicom_patient_id": 0,
+        "source_batch": 0,
+        "race": 0,
+        "cigsmok": 0,
+        "gender": 0,
+        "age": 0,
+        "loclhil": 51394,
+        "locllow": 51394,
+        "loclup": 51394,
+        "locrhil": 51394,
+        "locrlow": 51394,
+        "locrmid": 51394,
+        "locunk": 51394,
+        "locrup": 51394,
+        "locoth": 51394,
+        "locmed": 51394,
+        "loclmsb": 51394,
+        "locrmsb": 51394,
+        "loccar": 51394,
+        "loclin": 51394,
+        "lesionsize": 51662,
+        "de_type": 51418,
+        "de_grade": 51394,
+        "de_stag": 51395,
+        "scr_res0": 0,
+        "scr_res1": 0,
+        "scr_res2": 0,
+        "scr_iso0": 0,
+        "scr_iso1": 0,
+        "scr_iso2": 0,
+        "cancyr": 51394,
+        "can_scr": 0,
+        "canc_rpt_link": 0,
+        "pid": 0,
+        "dataset_version": 0,
+        "scr_days0": 1091,
+        "scr_days1": 4640,
+        "scr_days2": 5996,
+        "candx_days": 51394,
+        "canc_free_days": 0,
+        "de_stag_7thed": 51431
+      },
+      "dataset_versions": [
+        "2011.02.03/05.12.21"
+      ]
+    },
+    "nlst_screen": {
+      "rows": 75138,
+      "patients": 26453,
+      "duplicate_key_rows": 0,
+      "missing_key_rows": 0,
+      "orphan_patient_rows": 0,
+      "columns": [
+        "dicom_patient_id",
+        "source_batch",
+        "pid",
+        "ctdxqual",
+        "study_yr",
+        "techpara_kvp",
+        "techpara_ma",
+        "techpara_fov",
+        "techpara_effmas",
+        "ct_recon_filter1",
+        "ct_recon_filter2",
+        "ctdxqual_breath",
+        "ctdxqual_motion",
+        "ctdxqual_resp",
+        "ctdxqual_techpara",
+        "ctdxqual_inadeqimg",
+        "ctdxqual_artifact",
+        "ctdxqual_graininess",
+        "ctdxqual_other",
+        "ct_recon_filter3",
+        "ct_recon_filter4",
+        "dataset_version"
+      ],
+      "missing_counts": {
+        "dicom_patient_id": 0,
+        "source_batch": 0,
+        "pid": 0,
+        "ctdxqual": 3,
+        "study_yr": 0,
+        "techpara_kvp": 4,
+        "techpara_ma": 9906,
+        "techpara_fov": 284,
+        "techpara_effmas": 39258,
+        "ct_recon_filter1": 4,
+        "ct_recon_filter2": 47538,
+        "ctdxqual_breath": 73065,
+        "ctdxqual_motion": 73065,
+        "ctdxqual_resp": 73065,
+        "ctdxqual_techpara": 73065,
+        "ctdxqual_inadeqimg": 73065,
+        "ctdxqual_artifact": 73065,
+        "ctdxqual_graininess": 73065,
+        "ctdxqual_other": 73065,
+        "ct_recon_filter3": 74997,
+        "ct_recon_filter4": 75134,
+        "dataset_version": 0
+      },
+      "dataset_versions": [
+        "2011.02.03/05.12.21"
+      ],
+      "study_year_rows": {
+        "0": 26310,
+        "1": 24722,
+        "2": 24106
+      }
+    },
+    "nlst_ctab": {
+      "rows": 177487,
+      "patients": 24517,
+      "duplicate_key_rows": 0,
+      "missing_key_rows": 0,
+      "orphan_patient_rows": 0,
+      "columns": [
+        "dicom_patient_id",
+        "source_batch",
+        "sct_ab_desc",
+        "sct_ab_num",
+        "sct_epi_loc",
+        "sct_long_dia",
+        "sct_margins",
+        "sct_perp_dia",
+        "sct_pre_att",
+        "study_yr",
+        "sct_slice_num",
+        "sct_found_after_comp",
+        "pid",
+        "dataset_version"
+      ],
+      "missing_counts": {
+        "dicom_patient_id": 0,
+        "source_batch": 0,
+        "sct_ab_desc": 0,
+        "sct_ab_num": 0,
+        "sct_epi_loc": 142082,
+        "sct_long_dia": 142259,
+        "sct_margins": 142082,
+        "sct_perp_dia": 142292,
+        "sct_pre_att": 142083,
+        "study_yr": 0,
+        "sct_slice_num": 142082,
+        "sct_found_after_comp": 2,
+        "pid": 0,
+        "dataset_version": 0
+      },
+      "dataset_versions": [
+        "2011.02.03/05.12.21"
+      ],
+      "study_year_rows": {
+        "0": 57766,
+        "1": 59283,
+        "2": 60438
+      }
+    },
+    "nlst_ctabc": {
+      "rows": 31046,
+      "patients": 11178,
+      "duplicate_key_rows": 0,
+      "missing_key_rows": 0,
+      "orphan_patient_rows": 0,
+      "columns": [
+        "dicom_patient_id",
+        "source_batch",
+        "study_yr",
+        "sct_ab_preexist",
+        "pid",
+        "sct_ab_attn",
+        "sct_ab_gwth",
+        "sct_ab_invg",
+        "sct_ab_num",
+        "sct_ab_code",
+        "dataset_version",
+        "visible_days"
+      ],
+      "missing_counts": {
+        "dicom_patient_id": 0,
+        "source_batch": 0,
+        "study_yr": 0,
+        "sct_ab_preexist": 0,
+        "pid": 0,
+        "sct_ab_attn": 10364,
+        "sct_ab_gwth": 10363,
+        "sct_ab_invg": 25366,
+        "sct_ab_num": 0,
+        "sct_ab_code": 3,
+        "dataset_version": 0,
+        "visible_days": 4934
+      },
+      "dataset_versions": [
+        "2011.02.03/05.12.21"
+      ],
+      "study_year_rows": {
+        "0": 739,
+        "1": 15335,
+        "2": 14972
+      }
+    },
+    "nlst_canc": {
+      "rows": 2150,
+      "patients": 2058,
+      "duplicate_key_rows": 0,
+      "missing_key_rows": 0,
+      "orphan_patient_rows": 0,
+      "columns": [
+        "dicom_patient_id",
+        "source_batch",
+        "pid",
+        "lc_topog",
+        "topog_source",
+        "de_type",
+        "de_grade",
+        "de_stag",
+        "path_stag",
+        "clinical_stag",
+        "stage_sum",
+        "valcsg",
+        "clinical_t_7thed",
+        "clinical_n_7thed",
+        "clinical_m_7thed",
+        "path_t_7thed",
+        "path_n_7thed",
+        "path_m_7thed",
+        "de_stag_7thed",
+        "first_lc",
+        "lesionsize",
+        "lc_morph",
+        "lc_behav",
+        "lc_grade",
+        "source_best_stage",
+        "clinical_t",
+        "path_t",
+        "clinical_n",
+        "path_n",
+        "clinical_m",
+        "path_m",
+        "stage_only",
+        "study_yr",
+        "dataset_version",
+        "lc_order",
+        "candx_days"
+      ],
+      "missing_counts": {
+        "dicom_patient_id": 0,
+        "source_batch": 0,
+        "pid": 0,
+        "lc_topog": 0,
+        "topog_source": 293,
+        "de_type": 26,
+        "de_grade": 0,
+        "de_stag": 1,
+        "path_stag": 629,
+        "clinical_stag": 27,
+        "stage_sum": 629,
+        "valcsg": 788,
+        "clinical_t_7thed": 106,
+        "clinical_n_7thed": 78,
+        "clinical_m_7thed": 78,
+        "path_t_7thed": 682,
+        "path_n_7thed": 684,
+        "path_m_7thed": 682,
+        "de_stag_7thed": 61,
+        "first_lc": 0,
+        "lesionsize": 273,
+        "lc_morph": 0,
+        "lc_behav": 0,
+        "lc_grade": 0,
+        "source_best_stage": 0,
+        "clinical_t": 52,
+        "path_t": 634,
+        "clinical_n": 45,
+        "path_n": 655,
+        "clinical_m": 43,
+        "path_m": 651,
+        "stage_only": 566,
+        "study_yr": 0,
+        "dataset_version": 0,
+        "lc_order": 0,
+        "candx_days": 0
+      },
+      "dataset_versions": [
+        "2011.02.03/05.12.21"
+      ],
+      "study_year_rows": {
+        "0": 494,
+        "1": 329,
+        "2": 360,
+        "3": 233,
+        "4": 276,
+        "5": 314,
+        "6": 141,
+        "7": 3
+      }
+    }
+  },
+  "task_status": "BLOCKED_PENDING_FOLLOWUP_DEFINITION",
+  "ct_screen_rounds_per_patient": {
+    "1": 1351,
+    "2": 1519,
+    "3": 23583
+  },
+  "outcome_field_presence": {
+    "candx_days": true,
+    "canc_free_days": true,
+    "fup_days": false,
+    "death_days": false,
+    "rndgroup": false
+  },
+  "time_fields": {
+    "scr_days0": {
+      "numeric_rows": 52361,
+      "min": -4.0,
+      "max": 334.0,
+      "unrecognized_non_numeric_rows": 0
+    },
+    "scr_days1": {
+      "numeric_rows": 48812,
+      "min": 116.0,
+      "max": 755.0,
+      "unrecognized_non_numeric_rows": 0
+    },
+    "scr_days2": {
+      "numeric_rows": 47456,
+      "min": 575.0,
+      "max": 1502.0,
+      "unrecognized_non_numeric_rows": 0
+    },
+    "candx_days": {
+      "numeric_rows": 2058,
+      "min": 0.0,
+      "max": 2618.0,
+      "unrecognized_non_numeric_rows": 0
+    },
+    "canc_free_days": {
+      "numeric_rows": 53452,
+      "min": 0.0,
+      "max": 2983.0,
+      "unrecognized_non_numeric_rows": 0
+    }
+  },
+  "comparison_rows_without_same_round_abnormality": 18,
+  "critical_dictionary_labels": [
+    {
+      "table": "nlst_canc",
+      "column": "candx_days",
+      "label": "Days from randomization to diagnosis of lung cancer"
+    },
+    {
+      "table": "nlst_ctab",
+      "column": "sct_ab_num",
+      "label": "Abnormality number (unique identifier): A number assigned to each abnormality.  This starts at 1 for each participant for each study year, and counts up for each additional abnormality that participant has in that study year.  Along with pid and study_yr, this can be used to match abnormality records in this dataset to records in the Spiral CT Comparison Read Abnormalities dataset ."
+    },
+    {
+      "table": "nlst_ctabc",
+      "column": "sct_ab_num",
+      "label": "Abnormality number (unique identifier): A number assigned to each abnormality.  This starts at 1 for each participant for each study year, and counts up for each additional abnormality that participant has in that study year.  Along with pid and study_yr, this can be used to match records in this dataset to records in the main Spiral CT Abnormality dataset."
+    },
+    {
+      "table": "nlst_prsn",
+      "column": "scr_days0",
+      "label": "Days since randomization at time of screening (for T0, T1, and T2 exams): Days from randomization to the date of the screening exam.Contains information on either the spiral CT or the chest x-ray screening exam, depending on which study arm the participant was randomized to (see rndgroup)."
+    },
+    {
+      "table": "nlst_prsn",
+      "column": "candx_days",
+      "label": "Days from randomization to first diagnosis of lung cancer"
+    },
+    {
+      "table": "nlst_prsn",
+      "column": "canc_free_days",
+      "label": "Days from randomization to date when participant was last known to be free from lung cancer: Days until the date the participant was last known to be free of lung cancer.  This date comes from a participant study update form, except for ACRIN participants with cancer, where the cancer diagnosis date is used.Do not use this variable to calculate follow-up time for lung cancer incidence rates, Cox regressions, etc.  Instead, use fup_days for non-cases and candx_days for cases."
+    }
+  ],
+  "limitations": [
+    "canc_free_days is not an approved substitute for fup_days; outcome task remains unfrozen",
+    "sct_ab_num restarts for each participant and study year; no cross-year lesion identity",
+    "public subset does not establish report availability timestamps or external validity",
+    "population coverage differs; not all participants are CT patients"
+  ]
+}

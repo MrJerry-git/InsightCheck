@@ -9,3 +9,5 @@ python -m uvicorn app.main:app --reload --port 8000
 ```
 
 `python -m app.seed` 可重复执行且不会重复创建 Demo 数据。所有 Demo 体检批次均为 `is_demo=true`。
+
+研究工具通过 `pip install -e '.[dev,research]'` 安装可选依赖。新增 NLST 固定版本下载审计和三种离线风险基线，详见 [研究程序说明](../docs/RISK_EXPERIMENTS.md)。在线 LightGBM Adapter 与真实数据验证尚未完成；离线程序不自动进入医疗推荐链路。
