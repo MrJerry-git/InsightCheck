@@ -1,6 +1,6 @@
 # 循影定检 Backend
 
-FastAPI 后端已包含体检数据模型、Alembic 迁移、基础 CRUD、指标标准化、病灶匹配、纵向指标特征，以及第六阶段的 PyTorch DeepFM 训练、评估、制品和匹配排名 API。DeepFM 分数不是疾病概率或最终推荐，当前不包含医疗规则执行。
+FastAPI 后端包含体检数据模型、Alembic 迁移、基础 CRUD、指标标准化、病灶匹配、纵向指标特征、PyTorch DeepFM 训练与排名，以及独立医疗规则引擎。DeepFM 分数不是疾病概率或最终推荐；LightGBM、真实数据实验和完整方案生成编排尚未完成。后续以 [实施设计](../docs/IMPLEMENTATION_DESIGN.md) 为准。
 
 ```powershell
 python -m alembic upgrade head

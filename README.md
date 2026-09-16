@@ -4,10 +4,16 @@
 
 当前基础来自 iCan 原型，包含数据标准化、纵向特征、病灶匹配、DeepFM 和规则引擎实现。LightGBM 风险模型、真实数据实验及完整方案生成闭环尚未完成。DeepFM 匹配分数必须经过规则引擎，仍不是疾病概率或最终体检方案。
 
+- [实施设计与共同开发基线](docs/IMPLEMENTATION_DESIGN.md)
+- [公开数据选型与替代计划](docs/DATASET_PLAN.md)
+- [仓库内容审查](docs/REPOSITORY_REVIEW.md)
+- [风险任务卡模板](docs/RISK_TASK_TEMPLATE.md)
 - [开发路线与验收标准](docs/ROADMAP.md)
 - [Git 协作与环境重建](docs/CONTRIBUTING.md)
 
 本仓库不包含本地数据库、虚拟环境、真实体检资料和申报书中的个人信息。演示数据通过下文的 seed 命令生成；独立 HTML Demo 仅用于交互参考，其演示结果不代表模型实验成果。
+
+截至 2026-09-16，申报书所述合作方数据尚未取得。过渡期优先使用 Synthea 做工程联调，审计 NLST 公开临床子集的纵向实验可行性；二者不能替代合作方人群中的最终验证。下载与字段核验状态见数据计划。
 
 ## 产品边界
 
