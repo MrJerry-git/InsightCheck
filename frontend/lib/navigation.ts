@@ -45,8 +45,8 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "风险分析", href: "/risk-analysis", icon: ShieldCheck },
       { label: "体检推荐", href: "/recommendations", icon: ClipboardCheck },
-      { label: "AI 报告", href: "/ai-report", icon: FileSearch },
-      { label: "AI 问答", href: "/ai-chat", icon: MessageCircle },
+      { label: "方案报告", href: "/ai-report", icon: FileSearch },
+      { label: "方案说明", href: "/ai-chat", icon: MessageCircle },
     ],
   },
   {

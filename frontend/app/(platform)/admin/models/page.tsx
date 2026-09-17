@@ -1,12 +1,1 @@
-import { PagePlaceholder } from "@/components/shared/page-placeholder";
-
-export default function ModelsAdminPage() {
-  return (
-    <PagePlaceholder
-      title="模型与流水线版本"
-      description="管理特征流水线、风险模型、推荐模型和真实评估记录。"
-      plannedCapabilities={["特征流水线版本", "风险模型版本", "推荐模型版本", "评估与发布状态"]}
-    />
-  );
-}
-
+export default function Page() { return <div className="space-y-6"><h1 className="text-3xl font-bold">模型与运行模式</h1><section className="rounded-xl border p-5 space-y-3"><h2 className="text-xl font-semibold">LightGBM + DeepFM 合成演示</h2><p>版本 workflow-synthetic-v1。工作台在合成档案符合输入要求时，以固定种子的人工标签训练小型演示模型，并在当前进程缓存。演示输出不能解释为疾病风险或临床适宜性。</p><p>输入为年龄和记录数量的工程特征；不是正式纵向病灶风险模型。首次生成需安装后端 research 可选依赖。</p></section><section className="rounded-xl border p-5 space-y-3"><h2 className="text-xl font-semibold">真实风险模型：未启用</h2><p>非合成资料保留未评估状态；当前无经验证的临床模型制品。离线研究工具与在线演示分开运行。</p></section><section className="rounded-xl border p-5"><h2 className="text-xl font-semibold">解释：本地结构化模板</h2><p>无需外部密钥。不调用大语言模型，不提供开放式医学问答。</p></section></div>; }

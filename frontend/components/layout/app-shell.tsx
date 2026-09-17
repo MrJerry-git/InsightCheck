@@ -36,9 +36,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
               <Activity aria-hidden="true" className="size-4 text-primary" />
-              工程骨架运行中
+              档案 · 分析 · 方案工作台
             </div>
-            <Badge variant="outline">第一阶段</Badge>
+            <Badge variant="outline">1.0 工程预览</Badge>
           </div>
           <div className="overflow-x-auto border-t lg:hidden">
             <SidebarNav compact />
@@ -53,4 +53,3 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
-

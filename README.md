@@ -2,8 +2,9 @@
 
 本项目以《循影定检——基于 LightGBM 与 DeepFM 的个性化体检方案推荐》申报书为建设目标。参与 iCan 是推动项目改进与实现的阶段性实践；InsightCheck 统一管理后续的源码、技术文档和研究进展。
 
-当前基础来自 iCan 原型，包含数据标准化、纵向特征、病灶匹配、DeepFM 和规则引擎实现。LightGBM 风险模型、真实数据实验及完整方案生成闭环尚未完成。DeepFM 匹配分数必须经过规则引擎，仍不是疾病概率或最终体检方案。
+当前基础来自 iCan 原型，包含数据标准化、纵向特征、病灶匹配、DeepFM 和规则引擎实现。现已接通档案、历史分析、合成 LightGBM + DeepFM 推理、规则检查和方案保存回看闭环；真实数据模型实验尚未完成。DeepFM 匹配分数必须经过规则引擎，仍不是疾病概率或最终体检方案。
 
+- [1.0 工程预览使用与验收](docs/V1_WORKFLOW.md)
 - [实施设计与共同开发基线](docs/IMPLEMENTATION_DESIGN.md)
 - [公开数据选型与替代计划](docs/DATASET_PLAN.md)
 - [仓库内容审查](docs/REPOSITORY_REVIEW.md)
@@ -20,7 +21,7 @@
 
 截至 2026-09-16，申报书所述合作方数据尚未取得。过渡期优先使用 Synthea 做工程联调，审计 NLST 公开临床子集的纵向实验可行性；二者不能替代合作方人群中的最终验证。下载与字段核验状态见数据计划。
 
-当前已新增 Synthea 小样本适配、CSV 校验、来源记录、事务性幂等导入和 `/health-records` 历史查询页面。本机已导入 108 名合成患者；这不代表风险模型或推荐方案闭环完成。
+当前已新增 Synthea 小样本适配、CSV 校验、来源记录、事务性幂等导入和 `/health-records` 历史查询页面。本机已导入 108 名合成患者；该批数据仅用于工程联调，不代表医学有效性证据。
 
 2026-09-17：NLST 公开临床表审计及 Logistic、随机森林、LightGBM 离线实验程序已完成。程序通过合成夹具测试；真实风险任务尚未冻结，未训练 NLST 模型，也未接入在线风险服务。
 
@@ -69,7 +70,7 @@ LLM 不拥有最终项目推荐权，后续实现也不得把原始体检报告�
 
 开发环境使用代码内默认值即可启动，不强制创建 `.env`。需要覆盖后端配置时，在仓库根目录复制 `.env.example` 为 `.env`；需要覆盖前端 API 地址时，在 `frontend/.env.local` 中设置 `NEXT_PUBLIC_API_BASE_URL`。Next.js 不会自动读取仓库根目录的 `.env`。
 
-排名 API 只有在 `RECOMMENDATION_ARTIFACT_PATH` 指向已验证 DeepFM 制品目录时才提供分数；未加载模型时返回 HTTP 503，不使用随机或写死结果。
+原有独立排名 API 只有在 `RECOMMENDATION_ARTIFACT_PATH` 指向已验证 DeepFM 制品目录时才提供分数；未加载模型时返回 HTTP 503，不使用随机或写死结果。新工作台 `/workflow` 使用独立的合成演示模型，仅对合成记录运行，并明确标注合成任务概率；不能替代正式制品。
 
 ### 3. 后端
 
@@ -77,7 +78,7 @@ LLM 不拥有最终项目推荐权，后续实现也不得把原始体检报告�
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,research]"
 python -m alembic upgrade head
 python -m app.seed
 uvicorn app.main:app --reload --port 8000
@@ -119,4 +120,6 @@ npm run build
 
 已完成：工程骨架、15 个领域实体、数据标准化、病灶匹配与变化分析、历年指标特征工程、真实 PyTorch DeepFM 推荐模型，以及版本化、可追溯、确定性冲突裁决的医疗规则引擎。
 
-未完成：真实数据导入、完整指标/单位/病灶术语治理、第五阶段 LightGBM 风险制品、真实推荐交互数据及时间外实验、经医学审核的实际规则、三档方案生成、LLM 供应商适配、鉴权和部署。现有模型与规则演示数据不得当作真实实验指标或临床指南。
+本轮新增：受检者创建、手工记录、历史及病灶查看、合成模型推理、实际规则执行、方案事务保存、历史回看、JSON 证据导出、本地模板说明，以及项目和规则管理。详见 [使用说明](docs/V1_WORKFLOW.md)。
+
+未完成：合作方数据导入、完整指标/单位/病灶术语治理、第五阶段 LightGBM 风险制品、真实推荐交互数据及时间外实验、经医学审核的实际规则、三档方案生成、LLM 供应商适配、鉴权和部署。现有模型与规则演示数据不得当作真实实验指标或临床指南。
