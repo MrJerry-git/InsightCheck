@@ -5,6 +5,7 @@
 当前基础来自 iCan 原型，包含数据标准化、纵向特征、病灶匹配、DeepFM 和规则引擎实现。现已接通档案、历史分析、合成 LightGBM + DeepFM 推理、规则检查和方案保存回看闭环；真实数据模型实验尚未完成。DeepFM 匹配分数必须经过规则引擎，仍不是疾病概率或最终体检方案。
 
 - [1.0 工程预览使用与验收](docs/V1_WORKFLOW.md)
+- [团队分工与分支任务书](docs/TEAM_TASKS_V1.md)
 - [实施设计与共同开发基线](docs/IMPLEMENTATION_DESIGN.md)
 - [公开数据选型与替代计划](docs/DATASET_PLAN.md)
 - [仓库内容审查](docs/REPOSITORY_REVIEW.md)
