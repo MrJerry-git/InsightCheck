@@ -3,6 +3,7 @@ from app.models import Base, Patient
 EXPECTED_TABLES = {
     "ai_reports",
     "exam_histories",
+    "exam_item_prices",
     "exam_items",
     "health_checks",
     "imaging_exams",
