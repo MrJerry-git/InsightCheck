@@ -28,6 +28,8 @@ artifact-001/
 
 - `model_card.json` 记录 `artifact_sha256`，加载时逐个文件校验；哈希不符按 `artifact_invalid` 拒绝，绝不静默加载。
 - 加载时同时校验 `pipeline` 的 `feature_names_in_` 与模型卡的 `required_features` 一致，防止制品与卡片版本漂移。
+- 三个文件都在读取处处理**预期**的读取失败：文件不存在映射为 `artifact_missing`，权限被拒等其它 `OSError` 映射为 `artifact_unreadable`，编码或 JSON 损坏映射为 `artifact_invalid`。读取失败不会向外抛异常，也不会进入 `load_risk_model()` 的可用分支。
+- 只捕获预期的失败类型（读取类 `OSError`、`UnicodeDecodeError`、反序列化与评分阶段的具名异常），**不使用宽泛的 `except Exception`**，避免把程序错误伪装成不可用状态。
 - `joblib` 使用反序列化加载，因此**只加载本机可信制品**，不加载来历不明的模型文件。
 - 保存时若目标目录已有 `pipeline.joblib` 则拒绝覆盖，保留上一次制品。
 - 合成测试制品可以保存和加载，但必须保留 `is_synthetic=true` 与合成警告。
@@ -77,19 +79,34 @@ artifact-001/
 | `reason` / `detail` | 仅在 `unavailable` 时存在，给出机器可读原因与人类可读说明 |
 | `warnings` | 由模型卡派生，见下表 |
 
-模型校验保证二者互斥：可用时不得带原因码，不可用时不得带概率。**制品缺失、特征不符、版本不符或人群不适用时返回明确不可用状态，不回退为虚构概率，也不用 0 或 0.5 占位。**
+模型校验保证二者互斥：可用时不得带原因码，不可用时不得带概率。**制品缺失、制品不可读、特征不符、版本不符或人群不适用时返回明确不可用状态，不回退为虚构概率，也不用 0 或 0.5 占位。**
 
 `RiskModel.predict()` 受既有抽象接口签名限制无法返回状态，因此它在不可用时抛出携带 `reason` 的 `RiskModelUnavailableError`。服务层应使用 `assess()`；`load_risk_model()` 返回可用性摘要且不抛异常，`require_risk_model()` 在不可用时抛异常。
+
+### 统一就绪判断
+
+「能不能用」只有一处定义（`serving_readiness()`），训练、推理与加载摘要都引用它，不会出现摘要显示可用而 `assess()` 又拒绝的矛盾：
+
+| 入口 | 就绪判断 | 不可用时的表现 |
+| --- | --- | --- |
+| `load_risk_model()` | `serving_readiness()` | 返回 `unavailable` + 原因码，`model=None`、`available=False` |
+| `require_risk_model()` | 同上 | 抛出携带同一原因码的 `RiskModelUnavailableError` |
+| `RiskModel.predict()` | 同上 | 抛出携带同一原因码的异常 |
+| `assess()` | 同上 | 返回 `unavailable` + 同一原因码，`prediction=None` |
+| `train()` | `review_readiness()` | 未冻结即拒绝，不写审核记录 |
+
+因此未冻结（`DRAFT` / `BLOCKED`）的制品**在加载摘要里就是不可用**，原因码为 `review_not_frozen`；摘要仍保留 `model_version` 与 `feature_pipeline_version`，便于定位被拦下的版本。`BaselineRiskAdapter.load()` 是检查路径，仍允许加载未冻结制品以查看模型卡，但不提供服务可用性结论。
 
 ### 不可用原因
 
 | 原因码 | 触发条件 |
 | --- | --- |
-| `artifact_missing` | 制品目录或必需文件不存在 |
-| `artifact_invalid` | 模型卡/元数据非法、制品哈希不符、无法反序列化、流水线与卡片特征不一致、输出不是概率 |
+| `artifact_missing` | 制品目录或必需文件不存在，或在读取过程中消失 |
+| `artifact_unreadable` | 文件存在但读不到（权限被拒等 `OSError`） |
+| `artifact_invalid` | 模型卡/元数据非法、编码或 JSON 损坏、制品哈希不符、无法反序列化、流水线与卡片特征不一致、输出不是概率 |
 | `dependency_unavailable` | 未安装 `research` 可选依赖（pandas、scikit-learn、lightgbm、joblib） |
 | `model_not_loaded` | 适配器尚未加载或训练制品 |
-| `review_not_frozen` | 任务审核状态不是 `FROZEN` |
+| `review_not_frozen` | 任务审核状态不是 `FROZEN`；加载摘要、`require_risk_model()`、`assess()` 与 `predict()` 给出同一原因 |
 | `feature_missing` | 缺少必需字段，或该字段声明拒绝缺失却没有值（`None` 或 `NaN`） |
 | `feature_not_numeric` | 布尔、非数值文本、`±Inf` |
 | `feature_set_mismatch` | 出现未声明字段 |
@@ -189,6 +206,8 @@ artifact-001/
 
 ## 验证
 
-自动化测试覆盖：算法枚举与离线基线键一致；模型卡拒绝 `clinical_use=true`、来源/合成标志不一致、禁用特征与缺失划分哈希；合成与内部划分警告保留；保存再加载后预测一致；制品缺失、制品被篡改、缺少特征、多出特征、非数值、布尔、`±Inf`、特征版本不符、人群不适用时返回明确原因且**不返回概率**；`None` 与 `NaN` 按缺失策略处理并可被中位数填补；可用结果携带完整版本与追溯字段并可序列化；未冻结状态阻断训练与推理；未知标签、额外字段、缺失字段、单一类别与非数值训练数据被拒绝；拒绝覆盖已有制品；`from_baseline_experiment` 从真实离线基线报告固化制品，并拒绝未冻结或字段不符的实验。测试文件：`backend/tests/risk/test_artifact.py`（本次 29 项全部通过，含 Logistic 与 LightGBM 两种算法）。
+自动化测试覆盖：算法枚举与离线基线键一致；模型卡拒绝 `clinical_use=true`、来源/合成标志不一致、禁用特征与缺失划分哈希；合成与内部划分警告保留；保存再加载后预测一致；制品缺失、制品在读取过程中消失、制品不可读（权限被拒）、制品被篡改、编码与 JSON 损坏、缺少特征、多出特征、非数值、布尔、`±Inf`、特征版本不符、人群不适用时返回明确原因且**不返回概率**；`None` 与 `NaN` 按缺失策略处理并可被中位数填补；可用结果携带完整版本与追溯字段并可序列化；未冻结状态在**加载摘要、`require_risk_model()`、`assess()` 与 `predict()` 四处给出同一原因**（`DRAFT` 与 `BLOCKED` 分别验证）；非预期异常不被吞掉；未知标签、额外字段、缺失字段、单一类别与非数值训练数据被拒绝；拒绝覆盖已有制品；`from_baseline_experiment` 从真实离线基线报告固化制品，并拒绝未冻结或字段不符的实验。测试文件：`backend/tests/risk/test_artifact.py`（46 项全部通过，含 Logistic 与 LightGBM 两种算法）。
 
-2026-09-18 验证：完整后端测试 182 项通过，其中本分支新增 41 项；`ruff check app tests` 通过。全部拟合都使用合成工程夹具，**没有真实数据训练结果，也没有接入 API**。运行环境为 Windows + Python 3.12，pandas 2.3.3、scikit-learn 1.8.0、lightgbm 4.6.0、torch 2.12.0+cpu；测试里出现的 `joblib` NumPy 2.5 弃用提示与 LightGBM 特征名提示在既有 `tests/test_research.py` 中同样存在，属上游环境提示，不影响本次结果。
+2026-09-18 验证：完整后端测试 199 项通过（首轮审核 926cdb9 为 182 项，本轮针对加载问题新增 17 项），0 失败、0 跳过；`ruff check app tests` 通过。另按审核场景实测：把合法模型卡的 `review_status` 改成 `DRAFT` / `BLOCKED` 后，`load_risk_model()` 返回 `available=False`、`reason=review_not_frozen`、`model=None` 并保留 `model_version`；模拟模型卡读取 `PermissionError` 时返回 `artifact_unreadable` 而不抛异常；未改动的 FROZEN 制品仍正常加载并给出概率。
+
+全部拟合都使用合成工程夹具，**没有真实数据训练结果，也没有接入 API**。运行环境为 Windows + Python 3.12，pandas 2.3.3、scikit-learn 1.8.0、lightgbm 4.6.0、torch 2.12.0+cpu；测试里出现的 `joblib` NumPy 2.5 弃用提示与 LightGBM 特征名提示在既有 `tests/test_research.py` 中同样存在，属上游环境提示，不影响本次结果。

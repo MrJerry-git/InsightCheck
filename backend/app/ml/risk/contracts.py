@@ -18,6 +18,7 @@ from app.ml.contracts import FeatureRecord, RiskPrediction
 ARTIFACT_CARD_FILENAME = "model_card.json"
 ARTIFACT_METADATA_FILENAME = "metadata.json"
 ARTIFACT_PIPELINE_FILENAME = "pipeline.joblib"
+REPORT_FILENAME = "report.json"
 SHA256_PATTERN = r"^[a-f0-9]{64}$"
 # 必须与 app.research.risk_baseline.estimators() 的键一致；由测试守护。
 ALGORITHMS = ("logistic", "random_forest", "lightgbm")
@@ -54,6 +55,7 @@ class RiskAssessmentStatus(StrEnum):
 
 class RiskUnavailableReason(StrEnum):
     ARTIFACT_MISSING = "artifact_missing"
+    ARTIFACT_UNREADABLE = "artifact_unreadable"
     ARTIFACT_INVALID = "artifact_invalid"
     DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
     MODEL_NOT_LOADED = "model_not_loaded"
@@ -150,6 +152,11 @@ class RiskModelCard(RiskSchema):
     @property
     def feature_names(self) -> tuple[str, ...]:
         return tuple(feature.name for feature in self.required_features)
+
+    @property
+    def is_frozen(self) -> bool:
+        """只有 FROZEN 任务可以训练与推理；各处就绪判断统一引用这里。"""
+        return self.review_status == "FROZEN"
 
     @property
     def warnings(self) -> tuple[RiskWarning, ...]:

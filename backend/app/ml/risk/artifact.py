@@ -13,12 +13,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Sequence
+import pickle
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Self
+from typing import Any, Self, TypeVar
 
 from pydantic import ValidationError
 
@@ -35,6 +36,7 @@ from app.ml.risk.contracts import (
     ARTIFACT_CARD_FILENAME,
     ARTIFACT_METADATA_FILENAME,
     ARTIFACT_PIPELINE_FILENAME,
+    REPORT_FILENAME,
     BaselineExperimentRegistration,
     RiskAssessment,
     RiskAssessmentStatus,
@@ -50,18 +52,34 @@ from app.ml.risk.contracts import (
 )
 
 DEFAULT_SEED = 20260916  # 与 app.research.risk_baseline.run 的默认种子一致。
+# 反序列化制品时预期会出现的失败；越界异常照常抛出，不用过宽捕获掩盖程序错误。
+DESERIALIZE_ERRORS = (
+    EOFError,
+    ImportError,
+    AttributeError,
+    TypeError,
+    ValueError,
+    pickle.UnpicklingError,
+)
+T = TypeVar("T")
+# 评分阶段预期会出现的失败；其它异常照常抛出，避免掩盖程序错误。
+SCORING_ERRORS = (ValueError, TypeError, KeyError, IndexError, AttributeError, OSError)
 
 
 @dataclass(frozen=True, slots=True)
 class LoadedRiskModel:
-    """加载结果；不可用时给出原因而不是抛异常。"""
+    """加载结果；不可用时给出原因，且不携带可用模型实例。"""
 
     availability: RiskModelAvailability
     model: BaselineRiskAdapter | None
 
+    def __post_init__(self) -> None:
+        if self.availability.available != (self.model is not None):
+            raise ValueError("availability and the loaded model must agree")
+
     @property
     def available(self) -> bool:
-        return self.model is not None
+        return self.availability.available
 
 
 class _FeatureProblem(Exception):
@@ -92,6 +110,83 @@ def _research() -> SimpleNamespace:
 def _sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _guarded(action: Callable[[], T], filename: str) -> T:
+    """把预期的文件读取失败映射为明确原因，不掩盖其它异常。"""
+    try:
+        return action()
+    except FileNotFoundError as error:
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_MISSING, f"artifact file is missing: {filename}"
+        ) from error
+    except UnicodeDecodeError as error:
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_INVALID, f"artifact file is not valid UTF-8: {filename}"
+        ) from error
+    except OSError as error:
+        detail = error.strerror or error.__class__.__name__
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_UNREADABLE,
+            f"artifact file cannot be read ({detail}): {filename}",
+        ) from error
+
+
+def _load_pipeline(joblib_module: Any, path: Path, filename: str) -> Any:
+    """只加载本机可信制品；预期的文件与反序列化失败映射为明确原因。"""
+    try:
+        return joblib_module.load(path)
+    except FileNotFoundError as error:
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_MISSING, f"artifact file is missing: {filename}"
+        ) from error
+    except PermissionError as error:
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_UNREADABLE,
+            f"artifact file cannot be read ({error.strerror or 'permission denied'}): {filename}",
+        ) from error
+    except OSError as error:
+        detail = error.strerror or error.__class__.__name__
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_UNREADABLE,
+            f"artifact file cannot be read ({detail}): {filename}",
+        ) from error
+    except DESERIALIZE_ERRORS as error:
+        raise RiskModelUnavailableError(
+            RiskUnavailableReason.ARTIFACT_INVALID,
+            f"artifact cannot be deserialized ({error.__class__.__name__}): {filename}",
+        ) from error
+
+
+def review_readiness(card: RiskModelCard | None) -> tuple[RiskUnavailableReason, str] | None:
+    """审核就绪判断；`None` 表示可以进入训练或推理。"""
+    if card is None:
+        return (
+            RiskUnavailableReason.MODEL_NOT_LOADED,
+            "a model card is required before training or serving",
+        )
+    if not card.is_frozen:
+        return (
+            RiskUnavailableReason.REVIEW_NOT_FROZEN,
+            f"task review status is {card.review_status}; only a FROZEN task can be served, "
+            "and the adapter never fills review records",
+        )
+    return None
+
+
+def serving_readiness(
+    card: RiskModelCard | None, *, pipeline_loaded: bool
+) -> tuple[RiskUnavailableReason, str] | None:
+    """唯一的就绪判断：训练、推理与加载摘要共用同一处定义，避免状态互相矛盾。"""
+    blocked = review_readiness(card)
+    if blocked is not None:
+        return blocked
+    if not pipeline_loaded:
+        return (
+            RiskUnavailableReason.MODEL_NOT_LOADED,
+            "no risk artifact is loaded; train offline or load a reviewed artifact",
+        )
+    return None
 
 
 def _as_number(name: str, value: FeatureValue, policy: str) -> float | None:
@@ -264,22 +359,20 @@ class BaselineRiskAdapter(RiskModel):
 
     @classmethod
     def load(cls, artifact_path: Path) -> Self:
+        """加载并校验制品；预期失败抛出携带原因码的异常。
+
+        这是检查路径：未冻结的制品也能加载以便查看模型卡。服务层应使用
+        `load_risk_model()`，未冻结制品在那里就是明确不可用。
+        """
         modules = _research()
         directory = Path(artifact_path)
-        for filename in (
+        raw_card = _guarded(
+            lambda: (directory / ARTIFACT_CARD_FILENAME).read_text(encoding="utf-8"),
             ARTIFACT_CARD_FILENAME,
-            ARTIFACT_METADATA_FILENAME,
-            ARTIFACT_PIPELINE_FILENAME,
-        ):
-            if not (directory / filename).is_file():
-                raise RiskModelUnavailableError(
-                    RiskUnavailableReason.ARTIFACT_MISSING, f"artifact file is missing: {filename}"
-                )
+        )
         try:
-            card = RiskModelCard.model_validate_json(
-                (directory / ARTIFACT_CARD_FILENAME).read_text(encoding="utf-8")
-            )
-        except (ValidationError, ValueError) as error:
+            card = RiskModelCard.model_validate_json(raw_card)
+        except ValidationError as error:
             raise RiskModelUnavailableError(
                 RiskUnavailableReason.ARTIFACT_INVALID, f"model card is invalid: {error}"
             ) from error
@@ -293,17 +386,13 @@ class BaselineRiskAdapter(RiskModel):
                 "model card and metadata record different versions",
             )
         pipeline_path = directory / ARTIFACT_PIPELINE_FILENAME
-        if card.artifact_sha256 is None or _sha256(pipeline_path) != card.artifact_sha256:
+        digest = _guarded(lambda: _sha256(pipeline_path), ARTIFACT_PIPELINE_FILENAME)
+        if card.artifact_sha256 is None or digest != card.artifact_sha256:
             raise RiskModelUnavailableError(
                 RiskUnavailableReason.ARTIFACT_INVALID,
                 "artifact hash differs from the model card; preserve and review before use",
             )
-        try:
-            pipeline = modules.joblib.load(pipeline_path)
-        except Exception as error:
-            raise RiskModelUnavailableError(
-                RiskUnavailableReason.ARTIFACT_INVALID, f"artifact cannot be deserialized: {error}"
-            ) from error
+        pipeline = _load_pipeline(modules.joblib, pipeline_path, ARTIFACT_PIPELINE_FILENAME)
         _assert_pipeline_contract(card, pipeline)
         model = cls(card)
         model._pipeline = pipeline
@@ -319,12 +408,20 @@ class BaselineRiskAdapter(RiskModel):
         """把已完成的 `app.research.risk_baseline.run` 目录固化为在线制品。"""
         modules = _research()
         directory = Path(experiment_dir)
-        report_path = directory / "report.json"
-        if not report_path.is_file():
+        report_path = directory / REPORT_FILENAME
+        raw_report = _guarded(lambda: report_path.read_text(encoding="utf-8"), REPORT_FILENAME)
+        try:
+            report = json.loads(raw_report)
+        except ValueError as error:
             raise RiskModelUnavailableError(
-                RiskUnavailableReason.ARTIFACT_MISSING, "offline experiment report.json is missing"
+                RiskUnavailableReason.ARTIFACT_INVALID,
+                f"experiment report is not valid JSON: {error}",
+            ) from error
+        if not isinstance(report, dict):
+            raise RiskModelUnavailableError(
+                RiskUnavailableReason.ARTIFACT_INVALID,
+                "experiment report must be a JSON object",
             )
-        report = json.loads(report_path.read_text(encoding="utf-8"))
         task = report.get("task")
         if not isinstance(task, dict):
             raise RiskModelUnavailableError(
@@ -337,11 +434,7 @@ class BaselineRiskAdapter(RiskModel):
                 "only a FROZEN offline task may be registered as an artifact",
             )
         pipeline_path = directory / f"{registration.algorithm}.joblib"
-        if not pipeline_path.is_file():
-            raise RiskModelUnavailableError(
-                RiskUnavailableReason.ARTIFACT_MISSING, "the selected baseline file is missing"
-            )
-        payload = modules.joblib.load(pipeline_path)
+        payload = _load_pipeline(modules.joblib, pipeline_path, pipeline_path.name)
         pipeline = payload["pipeline"] if isinstance(payload, dict) else payload
         names = [spec.name for spec in registration.required_features]
         if names != list(task.get("features", [])):
@@ -409,19 +502,11 @@ class BaselineRiskAdapter(RiskModel):
 
     def assess(self, request: RiskPredictionRequest) -> RiskAssessment:
         """服务层合规入口：任何不可用情况都返回状态与原因，不返回概率。"""
-        card = self.card
-        if card is None or self._pipeline is None:
-            return self._unavailable(
-                request,
-                RiskUnavailableReason.MODEL_NOT_LOADED,
-                "no risk artifact is loaded; load a reviewed artifact before serving",
-            )
-        if card.review_status != "FROZEN":
-            return self._unavailable(
-                request,
-                RiskUnavailableReason.REVIEW_NOT_FROZEN,
-                f"task review status is {card.review_status}; inference is blocked until FROZEN",
-            )
+        blocked = self.readiness()
+        if blocked is not None:
+            return self._unavailable(request, *blocked)
+        card, pipeline = self.card, self._pipeline
+        assert card is not None and pipeline is not None  # readiness() guarantees both
         if request.feature_pipeline_version != card.feature_pipeline_version:
             return self._unavailable(
                 request,
@@ -440,7 +525,7 @@ class BaselineRiskAdapter(RiskModel):
         except _FeatureProblem as problem:
             return self._unavailable(request, problem.reason, problem.detail)
         try:
-            probability = self._probability(self._pipeline, values)
+            probability = self._probability(pipeline, values)
         except RiskModelUnavailableError as error:
             return self._unavailable(request, error.reason, error.detail)
         prediction = RiskPrediction(
@@ -473,7 +558,7 @@ class BaselineRiskAdapter(RiskModel):
         frame = modules.pd.DataFrame([values], columns=list(values))
         try:
             probability = float(pipeline.predict_proba(frame)[:, 1][0])
-        except Exception as error:
+        except SCORING_ERRORS as error:
             raise RiskModelUnavailableError(
                 RiskUnavailableReason.ARTIFACT_INVALID,
                 f"artifact cannot score the declared features: {error}",
@@ -509,6 +594,10 @@ class BaselineRiskAdapter(RiskModel):
             raise ValueError("a feature is entirely missing; revise the task before fitting")
         return frame, labels
 
+    def readiness(self) -> tuple[RiskUnavailableReason, str] | None:
+        """当前实例是否可服务；加载摘要与推理共用同一判断。"""
+        return serving_readiness(self.card, pipeline_loaded=self._pipeline is not None)
+
     def _ready_parts(self) -> tuple[Any, RiskModelCard]:
         card = self._require_ready_card()
         if self._pipeline is None:
@@ -519,17 +608,11 @@ class BaselineRiskAdapter(RiskModel):
         return self._pipeline, card
 
     def _require_ready_card(self) -> RiskModelCard:
-        if self.card is None:
-            raise RiskModelUnavailableError(
-                RiskUnavailableReason.MODEL_NOT_LOADED,
-                "a model card is required before training or serving",
-            )
-        if self.card.review_status != "FROZEN":
-            raise RiskModelUnavailableError(
-                RiskUnavailableReason.REVIEW_NOT_FROZEN,
-                "task must be FROZEN after data and outcome review; "
-                "the adapter never fills review records",
-            )
+        """训练与校验路径只需要审核就绪；推理路径另需已加载制品。"""
+        blocked = review_readiness(self.card)
+        if blocked is not None:
+            raise RiskModelUnavailableError(*blocked)
+        assert self.card is not None  # review_readiness() already rejected a missing card
         return self.card
 
     def _unavailable(
@@ -551,9 +634,9 @@ class BaselineRiskAdapter(RiskModel):
 
     @staticmethod
     def _read_metadata(path: Path) -> ModelArtifactMetadata:
+        raw = _guarded(lambda: path.read_text(encoding="utf-8"), path.name)
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            return ModelArtifactMetadata(**payload)
+            return ModelArtifactMetadata(**json.loads(raw))
         except (TypeError, ValueError) as error:
             raise RiskModelUnavailableError(
                 RiskUnavailableReason.ARTIFACT_INVALID, f"artifact metadata is invalid: {error}"
@@ -561,13 +644,31 @@ class BaselineRiskAdapter(RiskModel):
 
 
 def load_risk_model(artifact_path: Path) -> LoadedRiskModel:
-    """加载制品并返回可用性摘要；缺失或损坏时不抛异常。"""
+    """加载制品并返回可用性摘要；制品不可用时不抛异常。
+
+    加载摘要与推理共用 `serving_readiness()`：未冻结的制品在这里就是不可用，
+    不会出现摘要显示可用、`assess()` 又拒绝的矛盾。
+    """
     try:
         model = BaselineRiskAdapter.load(artifact_path)
     except RiskModelUnavailableError as error:
         return LoadedRiskModel(
             availability=RiskModelAvailability(
                 status=RiskAssessmentStatus.UNAVAILABLE, reason=error.reason, detail=error.detail
+            ),
+            model=None,
+        )
+    blocked = model.readiness()
+    if blocked is not None:
+        reason, detail = blocked
+        card = model.card
+        return LoadedRiskModel(
+            availability=RiskModelAvailability(
+                status=RiskAssessmentStatus.UNAVAILABLE,
+                reason=reason,
+                detail=detail,
+                model_version=card.model_version if card else None,
+                feature_pipeline_version=card.feature_pipeline_version if card else None,
             ),
             model=None,
         )

@@ -12,6 +12,8 @@ pytest.importorskip("lightgbm")
 from app.ml.contracts import ModelArtifactMetadata, TrainingDataset  # noqa: E402
 from app.ml.risk import (  # noqa: E402
     ALGORITHMS,
+    ARTIFACT_CARD_FILENAME,
+    ARTIFACT_METADATA_FILENAME,
     ARTIFACT_PIPELINE_FILENAME,
     BaselineExperimentRegistration,
     BaselineRiskAdapter,
@@ -25,6 +27,7 @@ from app.ml.risk import (  # noqa: E402
     RiskWarning,
     load_risk_model,
     require_risk_model,
+    serving_readiness,
 )
 from app.research.risk_baseline import TaskSpec, run  # noqa: E402
 
@@ -172,6 +175,184 @@ def test_tampered_artifact_is_rejected(tmp_path):
     loaded = load_risk_model(tmp_path / "artifact-logistic")
     assert loaded.model is None
     assert loaded.availability.reason is RiskUnavailableReason.ARTIFACT_INVALID
+
+
+def rewrite_card(target: Path, **changes) -> None:
+    """把已保存的模型卡改成另一个审核状态，模拟未冻结制品。"""
+    path = target / ARTIFACT_CARD_FILENAME
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update(changes)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.mark.parametrize("status", ["DRAFT", "BLOCKED"])
+def test_unfrozen_card_is_not_available_after_load(tmp_path, status):
+    """加载摘要与推理必须一致：未冻结制品在加载时就不可用。"""
+    target = tmp_path / "artifact-logistic"
+    trained(tmp_path)
+    rewrite_card(target, review_status=status)
+
+    loaded = load_risk_model(target)
+    assert loaded.available is False
+    assert loaded.model is None
+    assert loaded.availability.status is RiskAssessmentStatus.UNAVAILABLE
+    assert loaded.availability.reason is RiskUnavailableReason.REVIEW_NOT_FROZEN
+    assert status in loaded.availability.detail
+    # 制品身份仍可读，便于定位被拦下的版本。
+    assert loaded.availability.model_version == "fixture-risk-v1"
+
+    with pytest.raises(RiskModelUnavailableError) as error:
+        require_risk_model(target)
+    assert error.value.reason is RiskUnavailableReason.REVIEW_NOT_FROZEN
+
+
+@pytest.mark.parametrize("status", ["DRAFT", "BLOCKED"])
+def test_unfrozen_card_blocks_assess_and_predict_consistently(tmp_path, status):
+    """检查路径仍可加载模型卡，但推理与加载摘要给出同一个原因。"""
+    target = tmp_path / "artifact-logistic"
+    trained(tmp_path)
+    rewrite_card(target, review_status=status)
+
+    inspected = BaselineRiskAdapter.load(target)
+    assert inspected.card.review_status == status
+    assert inspected.readiness() == (
+        RiskUnavailableReason.REVIEW_NOT_FROZEN,
+        f"task review status is {status}; only a FROZEN task can be served, "
+        "and the adapter never fills review records",
+    )
+    assessment = inspected.assess(request())
+    assert assessment.status is RiskAssessmentStatus.UNAVAILABLE
+    assert assessment.reason is RiskUnavailableReason.REVIEW_NOT_FROZEN
+    assert assessment.prediction is None
+    with pytest.raises(RiskModelUnavailableError) as error:
+        inspected.predict("fixture-1", {"x": 0.1, "z": 0.1})
+    assert error.value.reason is RiskUnavailableReason.REVIEW_NOT_FROZEN
+
+
+def test_readiness_helper_is_the_single_decision_point(tmp_path):
+    target = tmp_path / "artifact-logistic"
+    model = trained(tmp_path)
+
+    assert serving_readiness(model.card, pipeline_loaded=True) is None
+    assert (
+        serving_readiness(None, pipeline_loaded=True)[0]
+        is RiskUnavailableReason.MODEL_NOT_LOADED
+    )
+    assert (
+        serving_readiness(model.card, pipeline_loaded=False)[0]
+        is RiskUnavailableReason.MODEL_NOT_LOADED
+    )
+    blocked = model.card.model_copy(update={"review_status": "BLOCKED"})
+    assert serving_readiness(blocked, pipeline_loaded=True)[0] is (
+        RiskUnavailableReason.REVIEW_NOT_FROZEN
+    )
+    # 未冻结优先于“制品未加载”，与加载摘要、assess() 的原因保持一致。
+    assert serving_readiness(blocked, pipeline_loaded=False)[0] is (
+        RiskUnavailableReason.REVIEW_NOT_FROZEN
+    )
+    rewrite_card(target, review_status="BLOCKED")
+    assert load_risk_model(target).availability.reason is RiskUnavailableReason.REVIEW_NOT_FROZEN
+
+
+@pytest.mark.parametrize(
+    ("filename", "reason"),
+    [
+        (ARTIFACT_CARD_FILENAME, RiskUnavailableReason.ARTIFACT_UNREADABLE),
+        (ARTIFACT_METADATA_FILENAME, RiskUnavailableReason.ARTIFACT_UNREADABLE),
+        (ARTIFACT_PIPELINE_FILENAME, RiskUnavailableReason.ARTIFACT_UNREADABLE),
+    ],
+)
+def test_unreadable_artifact_file_returns_status(tmp_path, monkeypatch, filename, reason):
+    """读取被拒绝时返回不可用原因，不向外抛异常。"""
+    trained(tmp_path)
+    real_read_text, real_open = Path.read_text, Path.open
+
+    def deny_read(self, *args, **kwargs):
+        if self.name == filename:
+            raise PermissionError(13, "Permission denied")
+        return real_read_text(self, *args, **kwargs)
+
+    def deny_open(self, *args, **kwargs):
+        if self.name == filename:
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny_read)
+    monkeypatch.setattr(Path, "open", deny_open)
+    loaded = load_risk_model(tmp_path / "artifact-logistic")
+    assert loaded.available is False
+    assert loaded.model is None
+    assert loaded.availability.reason is reason
+    assert "Permission denied" in loaded.availability.detail
+    with pytest.raises(RiskModelUnavailableError) as error:
+        require_risk_model(tmp_path / "artifact-logistic")
+    assert error.value.reason is reason
+
+
+@pytest.mark.parametrize(
+    "filename", [ARTIFACT_CARD_FILENAME, ARTIFACT_METADATA_FILENAME, ARTIFACT_PIPELINE_FILENAME]
+)
+def test_file_vanishing_during_read_returns_missing(tmp_path, monkeypatch, filename):
+    """文件在校验与读取之间消失时映射为缺失，而不是让异常穿透。"""
+    trained(tmp_path)
+    real_read_text, real_open = Path.read_text, Path.open
+
+    def vanish_read(self, *args, **kwargs):
+        if self.name == filename:
+            raise FileNotFoundError(2, "No such file or directory")
+        return real_read_text(self, *args, **kwargs)
+
+    def vanish_open(self, *args, **kwargs):
+        if self.name == filename:
+            raise FileNotFoundError(2, "No such file or directory")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", vanish_read)
+    monkeypatch.setattr(Path, "open", vanish_open)
+    loaded = load_risk_model(tmp_path / "artifact-logistic")
+    assert loaded.available is False
+    assert loaded.availability.reason is RiskUnavailableReason.ARTIFACT_MISSING
+
+
+@pytest.mark.parametrize(
+    "filename", [ARTIFACT_CARD_FILENAME, ARTIFACT_METADATA_FILENAME, ARTIFACT_PIPELINE_FILENAME]
+)
+def test_removed_artifact_file_is_reported_missing(tmp_path, filename):
+    target = tmp_path / "artifact-logistic"
+    trained(tmp_path)
+    (target / filename).unlink()
+    loaded = load_risk_model(target)
+    assert loaded.available is False
+    assert loaded.availability.reason is RiskUnavailableReason.ARTIFACT_MISSING
+
+
+def test_unexpected_errors_are_not_swallowed(tmp_path, monkeypatch):
+    """过宽的异常捕获会掩盖程序错误；只有预期的 IO 失败才映射为原因码。"""
+    trained(tmp_path)
+    real_read_text = Path.read_text
+
+    def explode(self, *args, **kwargs):
+        raise RuntimeError("programming error")
+
+    monkeypatch.setattr(Path, "read_text", explode)
+    with pytest.raises(RuntimeError, match="programming error"):
+        load_risk_model(tmp_path / "artifact-logistic")
+    monkeypatch.setattr(Path, "read_text", real_read_text)
+    assert load_risk_model(tmp_path / "artifact-logistic").available is True
+
+
+def test_unicode_and_broken_payloads_are_invalid_not_unreadable(tmp_path):
+    target = tmp_path / "artifact-logistic"
+    trained(tmp_path)
+    (target / ARTIFACT_CARD_FILENAME).write_bytes(b"\xff\xfe\x00not utf8")
+    assert load_risk_model(target).availability.reason is (
+        RiskUnavailableReason.ARTIFACT_INVALID
+    )
+
+    trained(tmp_path / "again")
+    other = tmp_path / "again" / "artifact-logistic"
+    (other / ARTIFACT_METADATA_FILENAME).write_text("{not json", encoding="utf-8")
+    assert load_risk_model(other).availability.reason is RiskUnavailableReason.ARTIFACT_INVALID
 
 
 @pytest.mark.parametrize(
@@ -388,3 +569,29 @@ def test_registration_refuses_unreviewed_or_mismatched_experiments(tmp_path):
     with pytest.raises(RiskModelUnavailableError) as error:
         BaselineRiskAdapter.from_baseline_experiment(tmp_path / "absent", registration())
     assert error.value.reason is RiskUnavailableReason.ARTIFACT_MISSING
+
+
+def test_registration_maps_read_failures_to_reasons(tmp_path, monkeypatch):
+    folder, _ = experiment(tmp_path)
+    real_read_text = Path.read_text
+
+    def deny(self, *args, **kwargs):
+        if self.name == "report.json":
+            raise PermissionError(13, "Permission denied")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny)
+    with pytest.raises(RiskModelUnavailableError) as error:
+        BaselineRiskAdapter.from_baseline_experiment(folder, registration())
+    assert error.value.reason is RiskUnavailableReason.ARTIFACT_UNREADABLE
+    monkeypatch.setattr(Path, "read_text", real_read_text)
+
+    (folder / "logistic.joblib").unlink()
+    with pytest.raises(RiskModelUnavailableError) as error:
+        BaselineRiskAdapter.from_baseline_experiment(folder, registration())
+    assert error.value.reason is RiskUnavailableReason.ARTIFACT_MISSING
+
+    (folder / "report.json").write_text("{not json", encoding="utf-8")
+    with pytest.raises(RiskModelUnavailableError) as error:
+        BaselineRiskAdapter.from_baseline_experiment(folder, registration())
+    assert error.value.reason is RiskUnavailableReason.ARTIFACT_INVALID

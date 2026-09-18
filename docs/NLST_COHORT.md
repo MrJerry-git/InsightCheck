@@ -123,6 +123,6 @@
 
 自动化测试覆盖：输出列与字段映射完全一致且不含 `label`；`subject_id` 队列命名空间与排序；轮次缺失时为未知而非 0；特殊缺失码不填 0；比较阅片无法关联行被计数；质量摘要不含受检者标识与标签；只有已复核字段进入建模白名单；标签生成被拒绝；未复核快照哈希被拒绝；非预期 `dataset_version` 被拒绝；输出目录拒绝覆盖。测试文件：`backend/tests/test_nlst_cohort.py`（本次 12 项全部通过）。
 
-2026-09-18 验证：固定快照实际下载并通过哈希校验（`matches_reference_snapshot=true`）；两次独立运行输出一致；汇总与 [NLST 审计](NLST_AUDIT.md) 逐项对齐（见上一节）。完整后端测试 182 项通过，其中本分支新增 41 项；`ruff check app tests` 通过。
+2026-09-18 验证：固定快照实际下载并通过哈希校验（`matches_reference_snapshot=true`）；三次独立运行输出一致（`features_sha256` 均为 `9618bd52…c731`）；汇总与 [NLST 审计](NLST_AUDIT.md) 逐项对齐（见上一节）。完整后端测试 199 项通过，其中本分支新增 58 项；`ruff check app tests` 通过。
 
 提交到版本库的 `docs/NLST_COHORT_QUALITY.json` 是 CLI 的原样输出。来源哈希与汇总计数应与本文一致；`features_sha256` 取决于本地 pandas / pyarrow 版本，不同环境可能不同，因此不把它当作跨环境指纹。
