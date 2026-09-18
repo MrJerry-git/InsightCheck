@@ -49,6 +49,15 @@ def upgrade() -> None:
             "is_demo_price OR source_url IS NOT NULL",
             name=op.f("ck_exam_item_prices_real_price_requires_source_url"),
         ),
+        sa.CheckConstraint("trim(source) <> ''", name=op.f("ck_exam_item_prices_source_not_blank")),
+        sa.CheckConstraint(
+            "source_url IS NULL OR trim(source_url) <> ''",
+            name=op.f("ck_exam_item_prices_source_url_not_blank"),
+        ),
+        sa.CheckConstraint(
+            "source_url IS NULL OR source_url LIKE 'http://%' OR source_url LIKE 'https://%'",
+            name=op.f("ck_exam_item_prices_source_url_scheme"),
+        ),
     )
     op.create_index("ix_exam_item_prices_effective_from", "exam_item_prices", ["effective_from"])
     op.create_index("ix_exam_item_prices_exam_item_id", "exam_item_prices", ["exam_item_id"])
