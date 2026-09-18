@@ -26,6 +26,15 @@ class ExamItemPriceRecord(IdMixin, CreatedAtMixin, Base):
             "is_demo_price OR source_url IS NOT NULL",
             name="real_price_requires_source_url",
         ),
+        CheckConstraint("trim(source) <> ''", name="source_not_blank"),
+        CheckConstraint(
+            "source_url IS NULL OR trim(source_url) <> ''",
+            name="source_url_not_blank",
+        ),
+        CheckConstraint(
+            "source_url IS NULL OR source_url LIKE 'http://%' OR source_url LIKE 'https://%'",
+            name="source_url_scheme",
+        ),
         Index("ix_exam_item_prices_effective_from", "effective_from"),
     )
 
