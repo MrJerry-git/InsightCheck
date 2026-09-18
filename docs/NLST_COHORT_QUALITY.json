@@ -1,0 +1,395 @@
+{
+  "adapter_version": "nlst-cohort-v1",
+  "cohort_id": "nlst-idc-v24",
+  "dataset_version": "2011.02.03/05.12.21",
+  "index_study_year": 1,
+  "built_at": "2026-09-18T12:11:09.613192+00:00",
+  "rows": 53452,
+  "subjects": 53452,
+  "subject_id_policy": "namespaced with 'nlst-idc-v24:' so cohorts cannot be stacked by row",
+  "files": {
+    "nlst_prsn": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_prsn/000000000000.parquet",
+      "reference_sha256": "3227b367486c44e693b85ad40d8eebbab10b86954a8444135b6b39974d003c7d",
+      "matches_reference_snapshot": true
+    },
+    "nlst_screen": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_screen/000000000000.parquet",
+      "reference_sha256": "7227401ba86444c22793cd0b9d4856b44aa809c64148fcfda23d6330815e51fd",
+      "matches_reference_snapshot": true
+    },
+    "nlst_ctab": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_ctab/000000000000.parquet",
+      "reference_sha256": "0dd091842933e57891da51db0ab045fbfba3307dcf9a9e4ced66cf5369111f9d",
+      "matches_reference_snapshot": true
+    },
+    "nlst_ctabc": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_ctabc/000000000000.parquet",
+      "reference_sha256": "f2ebee5100fe20efbb0b4ac9be0730efc2545c36dfb6bbe29b9af07300a617d8",
+      "matches_reference_snapshot": true
+    },
+    "nlst_canc": {
+      "url": "https://idc-open-metadata.s3.amazonaws.com/bigquery_export/idc_v24_clinical/nlst_canc/000000000000.parquet",
+      "reference_sha256": "7902dce4e7daacd9091c612bf534a9a66967098c5eb4219d071c61dd90f3ebfb",
+      "matches_reference_snapshot": true
+    },
+    "clinical_index": {
+      "url": "https://github.com/ImagingDataCommons/idc-index-data/releases/download/24.2.2/clinical_index.parquet",
+      "reference_sha256": "0d0a494711964054862de9a0ddd8c6e3c4bebfa5d10e4e9668e86c644d08aee7",
+      "matches_reference_snapshot": true
+    }
+  },
+  "columns": [
+    {
+      "column": "subject_id",
+      "table": "nlst_prsn",
+      "source": "pid",
+      "aggregation": "'nlst-idc-v24:' + pid；队列前缀防止跨队列按行合并",
+      "unit": "identifier",
+      "semantics": "reviewed",
+      "role": "key",
+      "note": "本地转换表的主键；质量摘要不输出任何受检者标识",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 53452
+    },
+    {
+      "column": "age",
+      "table": "nlst_prsn",
+      "source": "age",
+      "aggregation": "直接取值，特殊缺失码转未知",
+      "unit": "未核验",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "字段存在且为数值；单位与取值口径尚未在仓库内复核，故不进入模型",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 27
+    },
+    {
+      "column": "gender",
+      "table": "nlst_prsn",
+      "source": "gender",
+      "aggregation": "去空白，特殊缺失码转未知",
+      "unit": "category",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "类别编码字典尚未复核，不能直接当连续量或有序类别",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 2
+    },
+    {
+      "column": "race",
+      "table": "nlst_prsn",
+      "source": "race",
+      "aggregation": "去空白，特殊缺失码转未知",
+      "unit": "category",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "类别编码字典尚未复核",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 11
+    },
+    {
+      "column": "cigsmok",
+      "table": "nlst_prsn",
+      "source": "cigsmok",
+      "aggregation": "去空白，特殊缺失码转未知",
+      "unit": "category",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "吸烟状态编码字典尚未复核",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 2
+    },
+    {
+      "column": "index_scr_days",
+      "table": "nlst_prsn",
+      "source": "scr_days1",
+      "aggregation": "直接取值，保留原始正负偏移",
+      "unit": "days_since_randomization",
+      "semantics": "reviewed",
+      "role": "feature",
+      "note": "字典已核验为距随机化天数；不等于报告可获得时间，不能编造公历日期",
+      "non_null": 48812,
+      "unknown": 4640,
+      "distinct_non_null": 412
+    },
+    {
+      "column": "ct_screen_rounds",
+      "table": "nlst_screen",
+      "source": "study_yr",
+      "aggregation": "按 pid 统计 study_yr 去重个数",
+      "unit": "count",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "只表示该受检者在 CT 筛查表出现的轮次数，不代表完成了全部轮次",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 4
+    },
+    {
+      "column": "screen_observed_t0",
+      "table": "nlst_screen",
+      "source": "study_yr",
+      "aggregation": "该轮是否有筛查记录",
+      "unit": "boolean",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "轮次未出现时后续轮次计数必须为未知，不能当作未见异常",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 2
+    },
+    {
+      "column": "screen_observed_t1",
+      "table": "nlst_screen",
+      "source": "study_yr",
+      "aggregation": "该轮是否有筛查记录",
+      "unit": "boolean",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "索引轮次的观察标记",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 2
+    },
+    {
+      "column": "screen_observed_t2",
+      "table": "nlst_screen",
+      "source": "study_yr",
+      "aggregation": "该轮是否有筛查记录",
+      "unit": "boolean",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "T2 属于索引日之后的信息，只作覆盖审计，不得作为索引特征",
+      "non_null": 53452,
+      "unknown": 0,
+      "distinct_non_null": 2
+    },
+    {
+      "column": "ab_records_t0",
+      "table": "nlst_ctab",
+      "source": "(rows)",
+      "aggregation": "study_yr==0 的异常记录行数；轮次未出现时为 NULL",
+      "unit": "count",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "轮次已出现但没有记录行是否等于未见异常尚未复核，二者不可混同",
+      "non_null": 26310,
+      "unknown": 27142,
+      "distinct_non_null": 15
+    },
+    {
+      "column": "ab_records_t1",
+      "table": "nlst_ctab",
+      "source": "(rows)",
+      "aggregation": "study_yr==1 的异常记录行数；轮次未出现时为 NULL",
+      "unit": "count",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "索引轮次的异常记录规模；0 与未知必须区分",
+      "non_null": 24722,
+      "unknown": 28730,
+      "distinct_non_null": 15
+    },
+    {
+      "column": "ab_records_t2",
+      "table": "nlst_ctab",
+      "source": "(rows)",
+      "aggregation": "study_yr==2 的异常记录行数；轮次未出现时为 NULL",
+      "unit": "count",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "T2 属于索引日之后的信息，只作覆盖审计，不得作为索引特征",
+      "non_null": 24106,
+      "unknown": 29346,
+      "distinct_non_null": 15
+    },
+    {
+      "column": "ab_number_t1_max",
+      "table": "nlst_ctab",
+      "source": "sct_ab_num",
+      "aggregation": "study_yr==1 的最大编号",
+      "unit": "index",
+      "semantics": "reviewed",
+      "role": "descriptive",
+      "note": "字典已核验：编号在每位受检者每个研究年从 1 重新开始，只用于同轮关联",
+      "non_null": 21245,
+      "unknown": 32207,
+      "distinct_non_null": 14
+    },
+    {
+      "column": "ab_long_dia_t1_max",
+      "table": "nlst_ctab",
+      "source": "sct_long_dia",
+      "aggregation": "study_yr==1 的最大长径",
+      "unit": "未核验",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "源字段单位与测量口径尚未复核，不能按毫米解读或做临床阈值判断",
+      "non_null": 6967,
+      "unknown": 46485,
+      "distinct_non_null": 53
+    },
+    {
+      "column": "ab_perp_dia_t1_max",
+      "table": "nlst_ctab",
+      "source": "sct_perp_dia",
+      "aggregation": "study_yr==1 的最大垂直径",
+      "unit": "未核验",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "源字段单位与测量口径尚未复核",
+      "non_null": 6963,
+      "unknown": 46489,
+      "distinct_non_null": 45
+    },
+    {
+      "column": "ctabc_records_t1",
+      "table": "nlst_ctabc",
+      "source": "(rows)",
+      "aggregation": "study_yr==1 的比较阅片记录行数",
+      "unit": "count",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "只统计记录规模；比较阅片内容本身的可获得时间未复核",
+      "non_null": 8925,
+      "unknown": 44527,
+      "distinct_non_null": 8
+    },
+    {
+      "column": "ctabc_unmatched_t1",
+      "table": "nlst_ctabc",
+      "source": "(rows)",
+      "aggregation": "无法通过 pid、study_yr、sct_ab_num 连到同轮异常的记录行数",
+      "unit": "count",
+      "semantics": "structure_only",
+      "role": "descriptive",
+      "note": "必须标记和复核，不能静默当作已匹配或新发病灶",
+      "non_null": 8,
+      "unknown": 53444,
+      "distinct_non_null": 2
+    }
+  ],
+  "coverage": {
+    "screen_observed": {
+      "t0": 26310,
+      "t1": 24722,
+      "t2": 24106
+    },
+    "index_scr_days_present": 48812,
+    "ct_screen_rounds": {
+      "0": 26999,
+      "1": 1351,
+      "2": 1519,
+      "3": 23583
+    },
+    "ab_records_present": {
+      "t0": 26310,
+      "t1": 24722,
+      "t2": 24106
+    },
+    "ctabc_records_t1_present": 8925,
+    "ctabc_unmatched_t1_total": 9
+  },
+  "source_tables": {
+    "nlst_prsn": {
+      "rows": 53452,
+      "patients": 53452
+    },
+    "nlst_screen": {
+      "rows": 75138,
+      "patients": 26453
+    },
+    "nlst_ctab": {
+      "rows": 177487,
+      "patients": 24517
+    },
+    "nlst_ctabc": {
+      "rows": 31046,
+      "patients": 11178
+    },
+    "nlst_canc": {
+      "rows": 2150,
+      "patients": 2058
+    }
+  },
+  "modeling_approved_columns": [
+    "index_scr_days"
+  ],
+  "excluded_fields": [
+    {
+      "table": "nlst_prsn",
+      "columns": [
+        "candx_days",
+        "canc_free_days",
+        "cancyr",
+        "can_scr",
+        "canc_rpt_link",
+        "lesionsize",
+        "de_type",
+        "de_grade",
+        "de_stag",
+        "de_stag_7thed"
+      ],
+      "reason": "诊断、分期与结局衍生字段；索引时点不可用，也不能作为标签替代品"
+    },
+    {
+      "table": "nlst_canc",
+      "columns": [
+        "*"
+      ],
+      "reason": "整表是肺癌诊断、病理与分期结局，任何列都不得作为索引特征"
+    },
+    {
+      "table": "nlst_ctabc",
+      "columns": [
+        "sct_ab_code",
+        "sct_ab_preexist",
+        "sct_ab_gwth",
+        "sct_ab_invg",
+        "sct_ab_attn",
+        "visible_days"
+      ],
+      "reason": "比较阅片描述与事后可见信息；资料可获得时间未复核，暂不进入特征"
+    },
+    {
+      "table": "nlst_prsn",
+      "columns": [
+        "scr_res0",
+        "scr_res1",
+        "scr_res2",
+        "scr_iso0",
+        "scr_iso1",
+        "scr_iso2"
+      ],
+      "reason": "患者表筛查结果字段：公开子集没有 rndgroup，无法据以推定 CT 组，暂不复用"
+    },
+    {
+      "table": "nlst_screen",
+      "columns": [
+        "ctdxqual"
+      ],
+      "reason": "检查质量编码字典未复核，暂不复用"
+    }
+  ],
+  "label_column": null,
+  "task_status": "BLOCKED_PENDING_FOLLOWUP_DEFINITION",
+  "label_refusal": "refused: this adapter does not produce a label column. The NLST outcome task is BLOCKED_PENDING_FOLLOWUP_DEFINITION: the negative definition, censoring and report availability are unresolved (docs/RISK_TASK_NLST.md). Writing a label here would invent a reviewed outcome definition and could turn unobserved participants into negatives.",
+  "limitations": [
+    "缺 fup_days 与死亡时间：阴性、删失与竞争事件定义未定，缺少诊断记录不等于观察完整且未发生。",
+    "sct_ab_num 每位受检者每个研究年从 1 重新编号，只能同轮关联，不是跨年病灶身份。",
+    "公开子集没有报告可获得时间；scr_days 是相对随机化天数，不能编造公历日期或假设当天可用。",
+    "患者表人群大于 CT 筛查人群，且公开子集缺 rndgroup，不能仅凭患者表推定筛查分组。",
+    "轮次未出现时该轮计数为 NULL；轮次已出现但无异常记录行是否等于未见异常尚未复核。",
+    "字段语义未复核的列只作描述性输出，直接用于建模会引入未经审核的临床含义。",
+    "患者级表覆盖不等于影像可下载覆盖，本次未下载任何 CT 影像。"
+  ],
+  "privacy": "aggregate counts only; no subject identifiers and no per-person rows",
+  "clinical_use": false,
+  "features_sha256": "9618bd52b338ffb33e0caf9b07c75de4f748db82de3096645cc34af11c44c731"
+}
