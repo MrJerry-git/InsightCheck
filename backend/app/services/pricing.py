@@ -6,6 +6,7 @@
 
 from collections.abc import Iterable
 from datetime import date
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -58,6 +59,37 @@ class ExamItemPrice(BaseModel):
     @classmethod
     def normalize_code(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("价格来源不能为空白")
+        return cleaned
+
+    @field_validator("source_url")
+    @classmethod
+    def validate_source_url(cls, value: str | None) -> str | None:
+        """来源链接必须非空白且是 http/https 地址，避免用空格绕过来源校验。"""
+
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("来源链接不能为空白；真实价格必须记录可核验来源")
+        parsed = urlsplit(cleaned)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("来源链接必须是 http 或 https 地址")
+        return cleaned
+
+    @field_validator("institution", "region", "note")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
     @model_validator(mode="after")
     def validate_provenance(self) -> "ExamItemPrice":
