@@ -16,7 +16,7 @@ from app.schemas.plan_builder import (
     PlanBuildRequest,
     PlanCandidate,
 )
-from app.services.plan_builder import PlanBuilder, build_plan
+from app.services.plan_builder import PlanBuilder, build_plan, to_snapshot
 from app.services.pricing import ExamItemPrice, PriceCatalog, build_demo_catalog, format_amount
 
 AS_OF = date(2025, 12, 31)
@@ -462,3 +462,216 @@ def test_format_amount_uses_integer_cents():
     assert format_amount(12_000, "CNY") == "120.00 CNY"
     assert format_amount(5, "CNY") == "0.05 CNY"
     assert format_amount(999_900, "USD") == "9999.00 USD"
+
+
+def test_duplicate_with_conflicting_rule_status_keeps_blocked():
+    """低分记录被禁止、高分记录被允许时，禁止结论不能被分数覆盖。"""
+
+    candidates = [
+        candidate(
+            "LIVER_FUNCTION_PANEL",
+            score=0.20,
+            cost_level=CostLevel.LOW,
+            rule_status=CandidateRuleStatus.BLOCKED,
+            rule_notes=("规则 BLOCK：该项目不适用",),
+            exam_item_id="item-liver",
+        ),
+        candidate(
+            "LIVER_FUNCTION_PANEL",
+            score=0.90,
+            cost_level=CostLevel.LOW,
+            rule_status=CandidateRuleStatus.ALLOWED,
+            exam_item_id="item-liver",
+        ),
+        candidate("THYROID_US", score=0.50, cost_level=CostLevel.MEDIUM),
+    ]
+    result = build_plan(request_for(candidates))
+    standard = tier(result, PlanTier.STANDARD)
+    deep = tier(result, PlanTier.DEEP)
+
+    assert "LIVER_FUNCTION_PANEL" not in codes(standard)
+    assert "LIVER_FUNCTION_PANEL" not in codes(deep)
+    assert "THYROID_US" in codes(standard)
+    reasons = {
+        entry.reason_code for entry in standard.excluded if entry.code == "LIVER_FUNCTION_PANEL"
+    }
+    assert ExclusionReason.RULE_BLOCKED in reasons
+    assert ExclusionReason.DUPLICATE_CANDIDATE in reasons
+    assert ConflictCode.DUPLICATE_RULE_STATUS_CONFLICT in {c.code for c in standard.conflicts}
+    assert any("最严格" in note for note in result.notes)
+
+
+def test_duplicate_deferred_beats_higher_score_allowed():
+    candidates = [
+        candidate(
+            "LUNG_XRAY",
+            score=0.30,
+            cost_level=CostLevel.LOW,
+            radiation=True,
+            rule_status=CandidateRuleStatus.DEFERRED,
+            exam_item_id="item-lung",
+        ),
+        candidate(
+            "LUNG_XRAY",
+            score=0.95,
+            cost_level=CostLevel.LOW,
+            radiation=True,
+            rule_status=CandidateRuleStatus.NOT_CONFIGURED,
+            exam_item_id="item-lung",
+        ),
+    ]
+    result = build_plan(request_for(candidates))
+
+    for plan in result.tiers:
+        assert "LUNG_XRAY" not in codes(plan)
+        reasons = {entry.reason_code for entry in plan.excluded}
+        assert ExclusionReason.RULE_DEFERRED in reasons
+
+
+def test_duplicate_merge_keeps_all_rule_evidence():
+    candidates = [
+        candidate(
+            "THYROID_US",
+            score=0.40,
+            cost_level=CostLevel.MEDIUM,
+            rule_notes=("记录 A：建议复核",),
+            exam_item_id="item-thyroid",
+        ).model_copy(update={"rule_evidence_refs": ("ev-a",)}),
+        candidate(
+            "THYROID_US",
+            score=0.80,
+            cost_level=CostLevel.MEDIUM,
+            rule_notes=("记录 B：缺随访",),
+            exam_item_id="item-thyroid",
+        ).model_copy(
+            update={"rule_evidence_refs": ("ev-b",), "rule_set_version": "sha256:rules-2"}
+        ),
+    ]
+    result = build_plan(request_for(candidates))
+    standard = tier(result, PlanTier.STANDARD)
+    selected = next(item for item in standard.items if item.code == "THYROID_US")
+
+    assert selected.score == 0.80
+    assert set(selected.rule_notes) == {"记录 A：建议复核", "记录 B：缺随访"}
+    assert set(selected.rule_evidence_refs) == {"ev-a", "ev-b"}
+
+
+def test_cross_currency_budget_filter_does_not_mix_currencies():
+    """预算筛选必须按币种分别累计，不能把人民币金额加进美元预算比较。"""
+
+    catalog = PriceCatalog(
+        catalog_version="mixed-budget-v1",
+        prices=(
+            ExamItemPrice(
+                exam_item_code="CHEST_CT",
+                amount_cents=128_000,
+                currency="CNY",
+                source="演示价",
+                effective_from=date(2024, 1, 1),
+            ),
+            ExamItemPrice(
+                exam_item_code="THYROID_US",
+                amount_cents=40_000,
+                currency="USD",
+                source="演示价",
+                effective_from=date(2024, 1, 1),
+            ),
+        ),
+    )
+    candidates = [
+        candidate("CHEST_CT", score=0.90, cost_level=CostLevel.LOW),
+        candidate("THYROID_US", score=0.80, cost_level=CostLevel.LOW),
+    ]
+    result = build_plan(
+        request_for(
+            candidates,
+            budget=BudgetSpec(limit_cents=50_000, currency="USD"),
+            catalog=catalog,
+        )
+    )
+    standard = tier(result, PlanTier.STANDARD)
+
+    assert "THYROID_US" in codes(standard)
+    assert not any(
+        entry.code == "THYROID_US" and entry.reason_code is ExclusionReason.BUDGET_LIMIT
+        for entry in standard.excluded
+    )
+    assert standard.cost_summary.per_currency_totals == {"CNY": 128_000, "USD": 40_000}
+    assert standard.budget_status is BudgetStatus.UNDETERMINED
+    assert "总预算不可判定" in standard.budget_note
+    assert ConflictCode.MIXED_CURRENCY in {c.code for c in standard.conflicts}
+
+
+def test_tiers_stay_nested_under_budget_pressure():
+    """高档不能因为预算被低档已选项目挤掉：基础档 ⊆ 标准档 ⊆ 深入档。"""
+
+    candidates = [
+        candidate("CHEST_CT", score=0.90, cost_level=CostLevel.HIGH, radiation=True),
+        candidate("LIVER_FUNCTION_PANEL", score=0.80, cost_level=CostLevel.LOW),
+        candidate("THYROID_US", score=0.70, cost_level=CostLevel.MEDIUM),
+        candidate("BONE_DENSITY", score=0.60, cost_level=CostLevel.MEDIUM),
+        candidate("STOOL_TEST", score=0.40, cost_level=CostLevel.LOW),
+    ]
+    result = build_plan(
+        request_for(candidates, budget=BudgetSpec(limit_cents=130_000, currency="CNY"))
+    )
+    simplified, standard, deep = (tier(result, t) for t in PlanTier)
+
+    assert item_ids(simplified) <= item_ids(standard) <= item_ids(deep)
+    assert item_ids(simplified) == item_ids(deep)
+    assert "CHEST_CT" not in codes(deep)
+    assert any(
+        entry.code == "CHEST_CT" and entry.reason_code is ExclusionReason.BUDGET_LIMIT
+        for entry in deep.excluded
+    )
+    assert "承自低档结果" in deep.selection_note
+
+
+def test_inherited_items_record_origin_tier():
+    result = build_plan(request_for(default_candidates()))
+    simplified, standard, deep = (tier(result, t) for t in PlanTier)
+    simplified_ids = item_ids(simplified)
+    standard_ids = item_ids(standard)
+
+    assert all(item.inherited_from is None for item in simplified.items)
+    assert all(
+        item.inherited_from is PlanTier.SIMPLIFIED
+        for item in standard.items
+        if item.exam_item_id in simplified_ids
+    )
+    origins = {item.inherited_from for item in deep.items}
+    assert origins == {None, PlanTier.SIMPLIFIED, PlanTier.STANDARD}
+    assert all(
+        item.inherited_from is PlanTier.STANDARD
+        for item in deep.items
+        if item.exam_item_id in standard_ids - simplified_ids
+    )
+
+
+def test_selected_items_keep_rule_evidence():
+    candidates = [
+        candidate(
+            "STOOL_TEST",
+            score=0.40,
+            cost_level=CostLevel.LOW,
+            rule_status=CandidateRuleStatus.REVIEW_REQUIRED,
+            rule_notes=("规则要求人工复核：缺近期记录",),
+        ).model_copy(
+            update={
+                "rule_evidence_refs": ("check-2025-06-22",),
+                "rule_set_version": "sha256:rules-9",
+            }
+        )
+    ]
+    result = build_plan(request_for(candidates))
+    deep = tier(result, PlanTier.DEEP)
+    item = deep.items[0]
+
+    assert item.requires_review is True
+    assert item.rule_set_version == "sha256:rules-9"
+    assert item.rule_notes == ("规则要求人工复核：缺近期记录",)
+    assert item.rule_evidence_refs == ("check-2025-06-22",)
+    assert result.rule_set_versions == ("sha256:rules-9",)
+    snapshot = to_snapshot(result)
+    deep_payload = next(plan for plan in snapshot["tiers"] if plan["tier"] == "deep")
+    assert deep_payload["items"][0]["rule_evidence_refs"] == ["check-2025-06-22"]
