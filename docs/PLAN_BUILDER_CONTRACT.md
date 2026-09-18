@@ -85,14 +85,19 @@
 
 选取规则（确定性，与输入顺序无关）：
 
-1. 先按 `exam_item_id` 去重，保留得分较高的一条，其余记为 `duplicate_candidate`。
+1. 按 `exam_item_id` 合并重复候选：**分数取最高，规则结论取最严格**
+   （`BLOCKED` > `DEFERRED` > `REVIEW_REQUIRED` > `NOT_CONFIGURED`/`ALLOWED`），
+   规则说明与证据引用取并集。模型分数或更高分记录不得覆盖禁止与暂缓结论；出现不同规则
+   结论时写入 `duplicate_rule_status_conflict` 冲突，并在结果 `notes` 中说明。
 2. 规则禁止项（`BLOCKED` / `DEFERRED`）在任何档位都不进入 `items`，即使分数最高或预算充足。
 3. 规则要求复核项（`REVIEW_REQUIRED`）在所有档位优先保留，且不因预算或档位策略被删除；
    它们占用档位项目数，超出上限时产生 `review_items_exceed_tier_size` 冲突并保留全部。
-4. 其余候选按 `(-score, code, exam_item_id)` 排序，逐项检查档位上限、辐射策略、
+4. 三档逐档生成：`standard` 以 `simplified` 的入选结果为起点扩充，`deep` 以 `standard`
+   为起点扩充。`simplified ⊆ standard ⊆ deep` 因此恒成立，高档不会因预算或数量上限挤掉
+   低档已选项目；承自低档的项目通过 `inherited_from` 标出来源档位。
+5. 其余候选按 `(-score, code, exam_item_id)` 排序，逐项检查档位上限、辐射策略、
    费用等级策略与预算，命中则写入 `excluded` 并注明原因。
-5. 档位集合天然嵌套（`simplified ⊆ standard ⊆ deep`），因为高档策略严格更宽松；
-   若最终集合仍相同，写入 `identical_to` 与 `tiers_not_distinct` 冲突并说明原因。
+6. 若某档与其它档的项目集合相同，写入 `identical_to` 与 `tiers_not_distinct` 冲突并说明原因。
 
 档位只表达项目组合与预算偏好，不表达疾病风险或医学必要性。
 
@@ -101,17 +106,26 @@
 * 金额一律使用最小货币单位整数（分），全程无浮点累加；展示用 `format_amount` 整数拆分。
 * 每条价格记录包含金额、币种、来源、可核验链接、适用机构或地区、生效与失效日期、
   是否演示价。`is_demo_price=False` 时强制要求 `source_url`，否则模型校验失败。
+* 来源校验双重生效：`source` 与 `source_url` 去除首尾空白后不得为空，非演示价的链接必须是
+  `http`/`https` 地址。模型层（`ExamItemPrice`）与数据库层（`exam_item_prices` 的
+  `source_not_blank`、`source_url_not_blank`、`source_url_scheme` 约束）都会拒绝空白来源，
+  不能用空格绕过来源要求。
 * 价格按 `as_of_date` 生效区间取值，机构/地区更具体、生效更晚的优先。
+* 预算筛选与最终汇总都按币种分别累计：只有与预算同币种的项目参与比较，其它币种从不与预算
+  相加；存在无法换算的其它币种项目时返回 `undetermined`，文案明确写「总预算不可判定」。
 * 已知费用小计只统计已定价项目；出现未知价格时 `is_complete=False`，
   `budget_status` 只能是 `unknown_prices`，文案明确写「不能据此声称总价完整或保证不超预算」。
 * 规则要求与预算冲突时返回 `budget_exceeded` 冲突，应复核项目保留。
-* 多币种不做合并：`mixed_currency=True`、`known_total_cents=None`，预算比较返回 `undetermined`。
 * 演示价必须标记 `is_demo_price=True`，并在 `cost_summary.disclosure` 中提示不能作为真实收费依据。
 
 ## 快照约定
 
 `SelectedPlanItem.price` 是构建时冻结的价格副本（含 `catalog_version`、来源、生效日期）。
 价格目录事后调整不会改变已生成的 `PlanBuildResult`；重新构建才使用新价。
+
+`SelectedPlanItem` 同时保留输入中的规则依据：`rule_status`、`requires_review`、
+`rule_set_version`、`rule_notes`、`rule_evidence_refs`，以及标记来源档位的 `inherited_from`。
+保存后的方案因此仍能解释「为什么需要复核」，不需要回查当时的规则引擎输出。
 
 `to_snapshot(result, adopted_tier=PlanTier.STANDARD)` 生成可直接写入 `AIReport.content`
 的字典：
@@ -143,7 +157,9 @@
 
 `pricing_service.load_price_catalog(db, as_of_date=..., institution=..., region=...)`
 按截止日期与适用范围读出行并生成 `PriceCatalog`，`catalog_version` 由价格内容哈希得出，
-价格变化时版本随之变化。`seed_demo_prices(db)` 为尚无价格的项目补演示价，可重复执行。
+摘要覆盖金额、币种、来源与链接、适用机构与地区、生效与失效日期、演示价标记和备注，
+任一影响查价或来源判断的字段变化都会换版本。`seed_demo_prices(db)` 为尚无价格的项目补
+演示价，可重复执行。
 
 ## 接口示例（节选）
 
@@ -226,6 +242,14 @@ python -m ruff check app/services/plan_builder.py app/services/pricing.py app/sc
 | 价格生效区间与适用范围 | `test_lookup_prefers_specific_and_effective_price` |
 | 档位无差异需说明原因 | `test_identical_tiers_are_reported_with_reason` |
 | 复用规则引擎输出 | `test_plan_builder_can_consume_rule_engine_output` |
+| 重复候选规则冲突按保守策略合并 | `test_duplicate_with_conflicting_rule_status_keeps_blocked`、`test_duplicate_deferred_beats_higher_score_allowed` |
+| 重复候选合并保留全部规则证据 | `test_duplicate_merge_keeps_all_rule_evidence` |
+| 跨币种预算不混算 | `test_cross_currency_budget_filter_does_not_mix_currencies` |
+| 预算压力下三档仍嵌套 | `test_tiers_stay_nested_under_budget_pressure`、`test_inherited_items_record_origin_tier` |
+| 入选项目保留规则依据 | `test_selected_items_keep_rule_evidence` |
+| 来源非空白与链接格式（模型层） | `test_source_url_must_be_non_blank_http_address` |
+| 来源非空白与链接格式（数据库层） | `test_database_rejects_blank_source_and_invalid_url` |
+| 目录版本覆盖来源相关字段 | `test_catalog_version_covers_provenance_fields` |
 | 演示价幂等落库 | `test_pricing_service.py::test_seed_demo_prices_is_idempotent` |
 | 价格读取按截止日期与机构 | `test_load_price_catalog_respects_effective_range_and_institution` |
 | 目录版本随价格变化 | `test_catalog_version_tracks_price_changes` |
@@ -235,19 +259,20 @@ python -m ruff check app/services/plan_builder.py app/services/pricing.py app/sc
 ## 已定决策
 
 1. **一次请求返回三档**（`tier_mode = single_request_all_tiers`），不拆成三次请求。
-   理由：三档必须基于同一份价格目录和同一次输入截断，拆开容易出现档位间口径漂移；
-   前端一次请求即可出对比；模型与规则只跑一次。
-   `Recommendation.plan_tier` 记录用户实际采纳的档位（默认 `standard`）。
+  理由：三档必须基于同一份价格目录和同一次输入截断，拆开容易出现档位间口径漂移；
+  前端一次请求即可出对比；模型与规则只跑一次。
+  `Recommendation.plan_tier` 记录用户实际采纳的档位（默认 `standard`）。
 
-   这会改变现有语义，**接入时必须同步处理**：
-   `tests/test_workflow.py::test_end_to_end_models_save_replay_snapshot` 现在断言
-   「同一 `request_id` 换 `tier` → 409」。三档口径下同一 `request_id` 应覆盖三档、
-   返回同一份快照，`tier` 不再参与冲突判定；该断言需改成「同 `request_id` 同输入返回同一快照，
-   改动其它输入仍 409」。这属于公共入口变更，由负责人在整合 API 时一并改。
+   `tier` 目前**仍然参与请求冲突判定**（同一 `request_id` 改 `tier` 视为不同输入，
+   `tests/test_workflow.py` 的既有断言保持不变），本次不动，等整合接口时再统一确定。
 2. **价格落库。** 新增 `exam_item_prices` 表与迁移 `b7e4c1a920d3`，演示价由
    `seed_demo_prices` 幂等写入；接口层用 `load_price_catalog` 取当期价格。
-   理由：`institution`/`region`/生效区间只有在持久化后才有一致来源，避免 JSON 与
+  理由：`institution`/`region`/生效区间只有在持久化后才有一致来源，避免 JSON 与
    `exam_items` 两套事实。
+
+   服务输出（`PlanBuildResult` / `to_snapshot`）是新的数据结构，**不能直接当作旧页面已经
+   兼容**：本次只保证服务输出与证据保存完整，实际 API 接入、保存回读与旧页面适配由负责人
+   协调，前端由陈子正接。
 
 ## 仍需负责人确认
 
