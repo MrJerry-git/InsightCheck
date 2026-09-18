@@ -76,6 +76,7 @@ class ConflictCode(StrEnum):
     BUDGET_EXCEEDED = "budget_exceeded"
     UNKNOWN_PRICE_BLOCKS_TOTAL = "unknown_price_blocks_total"
     MIXED_CURRENCY = "mixed_currency"
+    DUPLICATE_RULE_STATUS_CONFLICT = "duplicate_rule_status_conflict"
     REVIEW_ITEMS_EXCEED_TIER_SIZE = "review_items_exceed_tier_size"
     TIERS_NOT_DISTINCT = "tiers_not_distinct"
     NO_ELIGIBLE_ITEM = "no_eligible_item"
@@ -139,6 +140,10 @@ class SelectedPlanItem(BaseModel):
     score: float | None = Field(default=None, ge=0, le=1)
     rule_status: CandidateRuleStatus
     requires_review: bool
+    rule_set_version: str | None = Field(default=None, max_length=64)
+    rule_notes: tuple[str, ...] = ()
+    rule_evidence_refs: tuple[str, ...] = ()
+    inherited_from: PlanTier | None = None
     selection_reason: str = Field(min_length=1)
     cost_status: CostStatus
     price: PriceSnapshot
