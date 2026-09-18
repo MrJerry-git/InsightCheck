@@ -85,13 +85,33 @@ def load_price_catalog(
 
 
 def catalog_version(rows: Sequence[tuple[ExamItemPriceRecord, str]]) -> str:
-    """用价格内容生成目录版本，价格变化时快照版本随之变化。"""
+    """用价格内容生成目录版本。
+
+    影响查价与来源判断的字段全部纳入摘要：金额、币种、来源与链接、适用机构与地区、
+    生效与失效日期、演示价标记、备注。任一字段变化都会产生新的目录版本，避免快照
+    引用到与当时不同的价格依据。
+    """
 
     if not rows:
         return EMPTY_CATALOG_VERSION
     identity = "|".join(
         sorted(
-            f"{record.id}:{code}:{record.amount_cents}:{record.currency}:{record.effective_from}"
+            ":".join(
+                [
+                    record.id,
+                    code,
+                    str(record.amount_cents),
+                    record.currency,
+                    record.source,
+                    record.source_url or "",
+                    record.institution or "",
+                    record.region or "",
+                    str(record.effective_from),
+                    str(record.effective_to or ""),
+                    str(bool(record.is_demo_price)),
+                    record.note or "",
+                ]
+            )
             for record, code in rows
         )
     )
