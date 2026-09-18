@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from app.models import ExamItem, ExamItemPriceRecord
 from app.models.enums import CostLevel
 from app.schemas.plan_builder import PlanBuildRequest, PlanCandidate
 from app.services.plan_builder import build_plan, to_snapshot
+from app.services.pricing import ExamItemPrice
 from app.services.pricing_service import (
     EMPTY_CATALOG_VERSION,
     load_price_catalog,
@@ -123,6 +125,106 @@ def test_catalog_version_tracks_price_changes(db_session: Session):
     assert first.catalog_version != EMPTY_CATALOG_VERSION
     assert first.lookup("LIVER_FUNCTION_PANEL", AS_OF).amount_cents == 12_000
     assert second.lookup("LIVER_FUNCTION_PANEL", AS_OF).amount_cents == 13_000
+
+
+def test_catalog_version_covers_provenance_fields(db_session: Session):
+    """来源、机构、地区、失效日期与演示标记变化时，目录版本也必须变化。"""
+
+    item = make_item(db_session, "CHEST_CT", CostLevel.HIGH, radiation=True)
+    record = add_price(
+        db_session,
+        item,
+        amount_cents=128_000,
+        source="演示价 A",
+        institution="演示医院",
+        region="演示地区",
+        effective_to=date(2026, 12, 31),
+    )
+    version = load_price_catalog(db_session, as_of_date=AS_OF).catalog_version
+    assert version.startswith("db-price-catalog-")
+
+    def assert_version_changes(label: str) -> str:
+        nonlocal version
+        db_session.commit()
+        current = load_price_catalog(db_session, as_of_date=AS_OF).catalog_version
+        assert current != version, label
+        version = current
+        return current
+
+    record.source = "演示价 B"
+    assert_version_changes("source")
+    record.institution = "另一家医院"
+    assert_version_changes("institution")
+    record.region = "另一地区"
+    assert_version_changes("region")
+    record.effective_to = date(2026, 6, 30)
+    assert_version_changes("effective_to")
+    record.source_url = "https://example.invalid/catalog"
+    assert_version_changes("source_url")
+    record.is_demo_price = False
+    assert_version_changes("is_demo_price")
+    record.note = "补充说明"
+    assert_version_changes("note")
+
+
+def test_source_url_must_be_non_blank_http_address():
+    for invalid in ("   ", "example.invalid/catalog", "ftp://example.invalid/catalog", "https://"):
+        with pytest.raises(ValidationError):
+            ExamItemPrice(
+                exam_item_code="CHEST_CT",
+                amount_cents=128_000,
+                currency="CNY",
+                source="某机构价目表",
+                source_url=invalid,
+                effective_from=date(2024, 1, 1),
+                is_demo_price=False,
+            )
+    cleaned = ExamItemPrice(
+        exam_item_code="CHEST_CT",
+        amount_cents=128_000,
+        currency="CNY",
+        source="  某机构价目表  ",
+        source_url="  https://example.invalid/catalog  ",
+        institution="   ",
+        effective_from=date(2024, 1, 1),
+        is_demo_price=False,
+    )
+    assert cleaned.source == "某机构价目表"
+    assert cleaned.source_url == "https://example.invalid/catalog"
+    assert cleaned.institution is None
+    with pytest.raises(ValidationError):
+        ExamItemPrice(
+            exam_item_code="CHEST_CT",
+            amount_cents=128_000,
+            currency="CNY",
+            source="   ",
+            effective_from=date(2024, 1, 1),
+        )
+
+
+def test_database_rejects_blank_source_and_invalid_url(db_session: Session):
+    item = make_item(db_session, "CHEST_CT", CostLevel.HIGH, radiation=True)
+    for kwargs in (
+        {"source": "   ", "source_url": None, "is_demo_price": True},
+        {"source": "某机构价目表", "source_url": "   ", "is_demo_price": False},
+        {
+            "source": "某机构价目表",
+            "source_url": "example.invalid/catalog",
+            "is_demo_price": False,
+        },
+    ):
+        db_session.add(
+            ExamItemPriceRecord(
+                exam_item_id=item.id,
+                amount_cents=128_000,
+                currency="CNY",
+                effective_from=date(2024, 1, 1),
+                **kwargs,
+            )
+        )
+        with pytest.raises(IntegrityError):
+            db_session.flush()
+        db_session.rollback()
 
 
 def test_real_price_requires_source_url_in_database(db_session: Session):
