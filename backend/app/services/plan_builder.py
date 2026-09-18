@@ -6,9 +6,13 @@
   规则结论由 ``app.rules`` 产出后作为输入传入，本模块只决定项目组合。
 * 确定性：相同输入得到完全相同的输出，不依赖字典遍历顺序或当前时间。
 * 档位只表达项目组合与预算偏好，不表达疾病风险或医学必要性。
+* 三档逐档继承：基础档 ⊆ 标准档 ⊆ 深入档，高档在低档结果之上扩充，不会挤掉低档项目。
 * 规则禁止（BLOCKED/DEFERRED）的项目在任何档位都不会因高分或预算被重新选入。
+* 重复候选按保守策略合并：最严格的规则结论优先，模型分数不能覆盖禁止或暂缓。
 * 规则要求复核的项目在所有档位保留；与预算冲突时返回冲突说明，不静默删除。
+* 预算按币种分别累计，只与相同币种比较；无法换算时明确返回总预算不可判定。
 * 价格与选取结果写入快照；之后调整价格目录不改变已保存的方案。
+* 入选项目保留规则版本、说明与证据引用，保存后仍能解释“为什么需要复核”。
 """
 
 from collections.abc import Sequence
@@ -93,26 +97,33 @@ class PlanBuilder:
         tiers = tuple(tier for tier in TIER_ORDER if tier in request.tiers)
         strategy_version = request.strategy_version or self._strategy_version
         catalog = request.price_catalog
-        kept, duplicates = _deduplicate(request.candidates)
+        kept, duplicates, duplicate_conflicts = _deduplicate(request.candidates)
         ordered = _order_candidates(kept)
+        by_id = {item.exam_item_id: item for item in ordered}
         mandatory = [item for item in ordered if item.rule_status.requires_review]
         optional = [item for item in ordered if not item.rule_status.requires_review]
         forbidden = [item for item in ordered if item.rule_status.forbids_selection]
         selectable = [item for item in optional if not item.rule_status.forbids_selection]
 
-        tier_plans = [
-            self._build_tier(
+        tier_plans: list[TierPlan] = []
+        inherited_plan: TierPlan | None = None
+        for tier in tiers:
+            tier_plan = self._build_tier(
                 tier=tier,
                 mandatory=mandatory,
                 selectable=selectable,
                 forbidden=forbidden,
                 duplicates=duplicates,
+                duplicate_conflicts=duplicate_conflicts,
+                inherited_plan=inherited_plan,
+                by_id=by_id,
                 catalog=catalog,
                 request=request,
                 strategy_version=strategy_version,
             )
-            for tier in tiers
-        ]
+            tier_plans.append(tier_plan)
+            inherited_plan = tier_plan
+        tier_plans = list(tier_plans)
         tier_plans = _annotate_identical_tiers(tier_plans)
 
         return PlanBuildResult(
@@ -126,7 +137,14 @@ class PlanBuilder:
                 sorted({item.rule_set_version for item in ordered if item.rule_set_version})
             ),
             price_catalog_version=catalog.catalog_version,
-            notes=_result_notes(request, mandatory, selectable, forbidden, duplicates),
+            notes=_result_notes(
+                request,
+                mandatory,
+                selectable,
+                forbidden,
+                duplicates,
+                duplicate_conflicts,
+            ),
             disclosures=DISCLOSURES,
         )
 
@@ -138,6 +156,9 @@ class PlanBuilder:
         selectable: Sequence[PlanCandidate],
         forbidden: Sequence[PlanCandidate],
         duplicates: Sequence[PlanCandidate],
+        duplicate_conflicts: Sequence[PlanConflict],
+        inherited_plan: TierPlan | None,
+        by_id: dict[str, PlanCandidate],
         catalog: PriceCatalog,
         request: PlanBuildRequest,
         strategy_version: str,
@@ -145,7 +166,28 @@ class PlanBuilder:
         policy = TIER_POLICIES[tier]
         selected: list[SelectedPlanItem] = []
         excluded: list[ExcludedPlanItem] = []
-        conflicts: list[PlanConflict] = []
+        conflicts: list[PlanConflict] = list(duplicate_conflicts)
+        lower_tier = inherited_plan.tier if inherited_plan is not None else None
+        inherited_items = list(inherited_plan.items) if inherited_plan is not None else []
+        inherited_ids = {item.exam_item_id for item in inherited_items}
+
+        for item in inherited_items:
+            candidate = by_id[item.exam_item_id]
+            origin = item.inherited_from or lower_tier
+            selected.append(
+                _select(
+                    candidate,
+                    tier,
+                    request,
+                    catalog,
+                    selection_reason=(
+                        f"承自{origin.value}档：{_score_text(candidate)}，"
+                        f"{_cost_text(_lookup_price(candidate, request, catalog))}；"
+                        "本档在低档结果之上扩充，不删除已选项目"
+                    ),
+                    inherited_from=origin,
+                )
+            )
 
         for candidate in forbidden:
             excluded.append(
@@ -162,7 +204,7 @@ class PlanBuilder:
                 _excluded(
                     candidate,
                     ExclusionReason.DUPLICATE_CANDIDATE,
-                    "同一项目重复出现，保留得分较高的一条",
+                    "同一项目重复出现，已按保守策略合并：取最高分并保留最严格的规则结论",
                 )
             )
 
@@ -179,6 +221,8 @@ class PlanBuilder:
             )
 
         for candidate in mandatory:
+            if candidate.exam_item_id in inherited_ids:
+                continue
             selected.append(
                 _select(
                     candidate,
@@ -189,9 +233,11 @@ class PlanBuilder:
                 )
             )
 
-        optional_slots = max(policy.max_items - len(mandatory), 0)
+        optional_slots = max(policy.max_items - len(selected), 0)
         optional_selected = 0
         for candidate in selectable:
+            if candidate.exam_item_id in inherited_ids:
+                continue
             price = _lookup_price(candidate, request, catalog)
             if optional_selected >= optional_slots:
                 excluded.append(
@@ -199,7 +245,7 @@ class PlanBuilder:
                         candidate,
                         ExclusionReason.TIER_ITEM_LIMIT,
                         f"本档项目数上限 {policy.max_items} 已满，"
-                        f"其中 {len(mandatory)} 个位置留给应复核项目",
+                        f"其中 {len(selected)} 项来自低档结果与应复核项目",
                     )
                 )
                 continue
@@ -221,23 +267,22 @@ class PlanBuilder:
                     )
                 )
                 continue
-            known_total = _known_total(selected)
-            if (
-                request.budget is not None
-                and price is not None
-                and price.currency == request.budget.currency
-                and known_total is not None
-                and known_total + price.amount_cents > request.budget.limit_cents
-            ):
-                excluded.append(
-                    _excluded(
-                        candidate,
-                        ExclusionReason.BUDGET_LIMIT,
-                        "加入后已知费用将超过预算 "
-                        f"{format_amount(request.budget.limit_cents, request.budget.currency)}",
-                    )
-                )
-                continue
+            if request.budget is not None and price is not None:
+                budget_currency = request.budget.currency
+                # 只累计与预算相同币种的金额，其它币种无法换算时不参与比较。
+                if price.currency == budget_currency:
+                    known_total = _currency_total(selected, budget_currency)
+                    if known_total + price.amount_cents > request.budget.limit_cents:
+                        excluded.append(
+                            _excluded(
+                                candidate,
+                                ExclusionReason.BUDGET_LIMIT,
+                                "加入后同币种已知费用将超过预算 "
+                                f"{format_amount(request.budget.limit_cents, budget_currency)}"
+                                f"（当前 {format_amount(known_total, budget_currency)}）",
+                            )
+                        )
+                        continue
             selected.append(
                 _select(
                     candidate,
@@ -300,19 +345,79 @@ def to_snapshot(
 
 def _deduplicate(
     candidates: Sequence[PlanCandidate],
-) -> tuple[list[PlanCandidate], list[PlanCandidate]]:
-    kept: dict[str, PlanCandidate] = {}
+) -> tuple[list[PlanCandidate], list[PlanCandidate], list[PlanConflict]]:
+    """按保守策略合并重复候选：分数取最高，规则结论取最严格，说明与证据取并集。
+
+    模型分数或评分更高的一条不得覆盖禁止（BLOCKED）或暂缓（DEFERRED）结论。
+    """
+
+    groups: dict[str, list[PlanCandidate]] = {}
     dropped: list[PlanCandidate] = []
     for candidate in candidates:
-        current = kept.get(candidate.exam_item_id)
-        if current is None:
-            kept[candidate.exam_item_id] = candidate
-        elif (candidate.score or 0.0) > (current.score or 0.0):
-            dropped.append(current)
-            kept[candidate.exam_item_id] = candidate
-        else:
-            dropped.append(candidate)
-    return list(kept.values()), dropped
+        groups.setdefault(candidate.exam_item_id, []).append(candidate)
+
+    kept: list[PlanCandidate] = []
+    conflicts: list[PlanConflict] = []
+    for group in groups.values():
+        if len(group) == 1:
+            kept.append(group[0])
+            continue
+        merged, status_conflict = _merge_duplicates(group)
+        kept.append(merged)
+        dropped.extend(item for item in group if item is not merged)
+        if status_conflict:
+            statuses = "、".join(
+                sorted({item.rule_status.value for item in group}, key=_status_rank)
+            )
+            conflicts.append(
+                PlanConflict(
+                    code=ConflictCode.DUPLICATE_RULE_STATUS_CONFLICT,
+                    message=(
+                        f"重复候选 {merged.code} 存在不同规则结论（{statuses}）；"
+                        f"已按保守策略取 {merged.rule_status.value}，模型分数不覆盖规则结论。"
+                    ),
+                    exam_item_ids=(merged.exam_item_id,),
+                )
+            )
+    return kept, dropped, conflicts
+
+
+_STATUS_PRECEDENCE: tuple[CandidateRuleStatus, ...] = (
+    CandidateRuleStatus.BLOCKED,
+    CandidateRuleStatus.DEFERRED,
+    CandidateRuleStatus.REVIEW_REQUIRED,
+    CandidateRuleStatus.NOT_CONFIGURED,
+    CandidateRuleStatus.ALLOWED,
+)
+
+
+def _status_rank(status: CandidateRuleStatus) -> int:
+    return _STATUS_PRECEDENCE.index(status)
+
+
+def _merge_duplicates(
+    group: Sequence[PlanCandidate],
+) -> tuple[PlanCandidate, bool]:
+    """返回合并后的候选，以及是否存在不同规则结论。"""
+
+    scores = [item.score for item in group if item.score is not None]
+    ranked = sorted(
+        group,
+        key=lambda item: (_status_rank(item.rule_status), -(item.score or 0.0), item.code),
+    )
+    strictest = ranked[0]
+    notes = tuple(dict.fromkeys(note for item in group for note in item.rule_notes))
+    evidence = tuple(dict.fromkeys(ref for item in group for ref in item.rule_evidence_refs))
+    versions = sorted({item.rule_set_version for item in group if item.rule_set_version})
+    merged = strictest.model_copy(
+        update={
+            "score": max(scores) if scores else None,
+            "rule_notes": notes,
+            "rule_evidence_refs": evidence,
+            "rule_set_version": versions[0] if len(versions) == 1 else strictest.rule_set_version,
+        }
+    )
+    return merged, len({item.rule_status for item in group}) > 1
 
 
 def _order_candidates(candidates: Sequence[PlanCandidate]) -> list[PlanCandidate]:
@@ -353,6 +458,7 @@ def _select(
     catalog: PriceCatalog,
     *,
     selection_reason: str,
+    inherited_from: PlanTier | None = None,
 ) -> SelectedPlanItem:
     price = _lookup_price(candidate, request, catalog)
     return SelectedPlanItem(
@@ -366,6 +472,10 @@ def _select(
         score=candidate.score,
         rule_status=candidate.rule_status,
         requires_review=candidate.rule_status.requires_review,
+        rule_set_version=candidate.rule_set_version,
+        rule_notes=candidate.rule_notes,
+        rule_evidence_refs=candidate.rule_evidence_refs,
+        inherited_from=inherited_from,
         selection_reason=selection_reason,
         cost_status=CostStatus.PRICED if price else CostStatus.UNPRICED,
         price=_snapshot(price, catalog),
@@ -421,22 +531,14 @@ def _policy_reason(
     return f"{policy.description}：{_score_text(candidate)}，{_cost_text(price)}"
 
 
-def _known_total(selected: Sequence[SelectedPlanItem]) -> int | None:
-    """已知费用小计；出现多种币种时返回 None，表示不能合并合计。"""
+def _currency_total(selected: Sequence[SelectedPlanItem], currency: str) -> int:
+    """指定币种的已知费用小计；不同币种从不合并相加。"""
 
-    amounts = [
+    return sum(
         item.price.amount_cents
         for item in selected
-        if item.price.amount_cents is not None and item.price.currency is not None
-    ]
-    currencies = {
-        item.price.currency
-        for item in selected
-        if item.price.amount_cents is not None and item.price.currency is not None
-    }
-    if len(currencies) > 1:
-        return None
-    return sum(amounts)
+        if item.price.currency == currency and item.price.amount_cents is not None
+    )
 
 
 def _cost_summary(selected: Sequence[SelectedPlanItem], request: PlanBuildRequest) -> CostSummary:
@@ -499,41 +601,45 @@ def _evaluate_budget(
         )
     limit = budget.limit_cents
     limit_text = format_amount(limit, budget.currency)
-    if summary.mixed_currency:
-        return (
-            BudgetStatus.UNDETERMINED,
-            f"价格包含多种币种，无法与预算 {limit_text} 比较。",
-            [
-                PlanConflict(
-                    code=ConflictCode.MIXED_CURRENCY,
-                    message="价格目录包含多种币种，未与预算合并比较。",
-                )
-            ],
-        )
-    if summary.currency is not None and summary.currency != budget.currency:
-        return (
-            BudgetStatus.UNDETERMINED,
-            f"价格币种 {summary.currency} 与预算币种 {budget.currency} 不一致，未做比较。",
-            [
-                PlanConflict(
-                    code=ConflictCode.MIXED_CURRENCY,
-                    message=(f"价格币种 {summary.currency} 与预算币种 {budget.currency} 不一致。"),
-                )
-            ],
-        )
-    known_total = summary.known_total_cents or 0
-    if known_total > limit:
+    budget_total = summary.per_currency_totals.get(budget.currency, 0)
+    other_currencies = {
+        currency: amount
+        for currency, amount in summary.per_currency_totals.items()
+        if currency != budget.currency
+    }
+    if budget_total > limit:
         return (
             BudgetStatus.OVER_BUDGET,
-            f"已知费用小计 {format_amount(known_total, budget.currency)} 超过预算 {limit_text}；"
+            f"已知 {budget.currency} 费用小计 {format_amount(budget_total, budget.currency)} "
+            f"超过预算 {limit_text}；"
             "应复核项目未被删除，请在方案说明中记录冲突。",
             [
                 PlanConflict(
                     code=ConflictCode.BUDGET_EXCEEDED,
                     message=(
-                        f"已知费用 {format_amount(known_total, budget.currency)} "
-                        f"超过预算 {limit_text}；"
+                        f"已知 {budget.currency} 费用 "
+                        f"{format_amount(budget_total, budget.currency)} 超过预算 {limit_text}；"
                         "规则要求复核的项目全部保留。"
+                    ),
+                )
+            ],
+        )
+    if other_currencies:
+        detail = "、".join(
+            f"{format_amount(amount, currency)}"
+            for currency, amount in sorted(other_currencies.items())
+        )
+        return (
+            BudgetStatus.UNDETERMINED,
+            f"已知 {budget.currency} 小计 {format_amount(budget_total, budget.currency)} "
+            f"未超过预算 {limit_text}，但另有其他币种项目（{detail}）无法换算，"
+            "总预算不可判定。",
+            [
+                PlanConflict(
+                    code=ConflictCode.MIXED_CURRENCY,
+                    message=(
+                        f"方案包含与预算不同币种的项目（{detail}），未做换算与合并比较，"
+                        "总预算不可判定。"
                     ),
                 )
             ],
@@ -541,7 +647,7 @@ def _evaluate_budget(
     if not summary.is_complete:
         return (
             BudgetStatus.UNKNOWN_PRICES,
-            f"已知费用小计 {format_amount(known_total, budget.currency)} 未超过预算 {limit_text}，"
+            f"已知费用小计 {format_amount(budget_total, budget.currency)} 未超过预算 {limit_text}，"
             f"但 {summary.unpriced_item_count} 个项目价格未知，无法保证不超预算。",
             [
                 PlanConflict(
@@ -556,7 +662,7 @@ def _evaluate_budget(
         )
     return (
         BudgetStatus.WITHIN_BUDGET,
-        f"已知费用小计 {format_amount(known_total, budget.currency)} 在预算 {limit_text} 之内。",
+        f"已知费用小计 {format_amount(budget_total, budget.currency)} 在预算 {limit_text} 之内。",
         [],
     )
 
@@ -564,10 +670,13 @@ def _evaluate_budget(
 def _selection_note(
     tier: PlanTier, policy: TierPolicy, items: Sequence[SelectedPlanItem], selectable: int
 ) -> str:
+    inherited = sum(1 for item in items if item.inherited_from is not None)
     base = (
         f"{policy.description}；上限 {policy.max_items} 项，"
         f"可选候选 {selectable} 个，本档选入 {len(items)} 项。"
     )
+    if inherited:
+        base += f" 其中 {inherited} 项承自低档结果，本档新增 {len(items) - inherited} 项。"
     if not items:
         return f"{base} 本档没有可保留的项目。"
     return base
@@ -619,13 +728,21 @@ def _result_notes(
     selectable: Sequence[PlanCandidate],
     forbidden: Sequence[PlanCandidate],
     duplicates: Sequence[PlanCandidate],
+    duplicate_conflicts: Sequence[PlanConflict],
 ) -> tuple[str, ...]:
     notes: list[str] = []
     if not request.candidates:
         notes.append("候选目录为空，未生成任何档位；请先维护体检项目目录。")
         return tuple(notes)
     if duplicates:
-        notes.append(f"输入包含 {len(duplicates)} 条重复候选，已按项目编号去重。")
+        notes.append(
+            f"输入包含 {len(duplicates)} 条重复候选，已按保守策略合并（分数取最高，"
+            "规则结论取最严格）。"
+        )
+    if duplicate_conflicts:
+        notes.append(
+            f"其中 {len(duplicate_conflicts)} 个项目的重复记录规则结论不一致，已按最严格结论处理。"
+        )
     if forbidden and not mandatory and not selectable:
         notes.append("全部候选都被规则禁止或要求暂缓，三个档位都没有可保留项目。")
     if not forbidden and not mandatory and not selectable:
