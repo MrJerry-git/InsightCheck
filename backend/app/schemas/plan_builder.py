@@ -7,11 +7,11 @@
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import CostLevel, PlanTier
 from app.rules.models import FinalRuleStatus, RuleEvaluationResult
-from app.services.pricing import PriceCatalog
+from app.services.pricing import PriceCatalog, normalize_currency_code
 
 SCHEMA_VERSION = "plan-builder-contract-v1"
 TIER_ORDER: tuple[PlanTier, ...] = (PlanTier.SIMPLIFIED, PlanTier.STANDARD, PlanTier.DEEP)
@@ -89,8 +89,15 @@ class BudgetSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     limit_cents: int = Field(ge=0)
-    currency: str = Field(default="CNY", min_length=3, max_length=3)
+    currency: str = Field(default="CNY", max_length=16)
     note: str | None = Field(default=None, max_length=300)
+
+    @field_validator("currency")
+    @classmethod
+    def normalize_currency(cls, value: str) -> str:
+        """与价格使用同一套币种校验，避免小写币种绕过同币种预算比较。"""
+
+        return normalize_currency_code(value)
 
 
 class PlanCandidate(BaseModel):
