@@ -295,6 +295,7 @@ class PlanBuilder:
             optional_selected += 1
 
         selected.sort(key=lambda item: (-(item.score or 0.0), item.code, item.exam_item_id))
+        excluded.sort(key=lambda entry: (entry.reason_code.value, entry.code, entry.exam_item_id))
         ranked = tuple(
             item.model_copy(update={"rank": index}) for index, item in enumerate(selected, 1)
         )
@@ -349,36 +350,37 @@ def _deduplicate(
     """按保守策略合并重复候选：分数取最高，规则结论取最严格，说明与证据取并集。
 
     模型分数或评分更高的一条不得覆盖禁止（BLOCKED）或暂缓（DEFERRED）结论。
+    合并结果与输入顺序无关：分组、合并字段、被移除记录与冲突全部按固定顺序处理。
     """
 
     groups: dict[str, list[PlanCandidate]] = {}
-    dropped: list[PlanCandidate] = []
     for candidate in candidates:
         groups.setdefault(candidate.exam_item_id, []).append(candidate)
 
     kept: list[PlanCandidate] = []
+    dropped: list[PlanCandidate] = []
     conflicts: list[PlanConflict] = []
-    for group in groups.values():
+    for exam_item_id in sorted(groups):
+        group = groups[exam_item_id]
         if len(group) == 1:
             kept.append(group[0])
             continue
-        merged, status_conflict = _merge_duplicates(group)
+        merged, kept_record, conflict_details = _merge_duplicates(group)
         kept.append(merged)
-        dropped.extend(item for item in group if item is not merged)
-        if status_conflict:
-            statuses = "、".join(
-                sorted({item.rule_status.value for item in group}, key=_status_rank)
-            )
+        # 合并结果是新对象，必须按实际被移除的记录计数：N 条合为 1 条只排除 N-1 条。
+        dropped.extend(item for item in _sorted_group(group) if item is not kept_record)
+        if conflict_details:
             conflicts.append(
                 PlanConflict(
                     code=ConflictCode.DUPLICATE_RULE_STATUS_CONFLICT,
                     message=(
-                        f"重复候选 {merged.code} 存在不同规则结论（{statuses}）；"
+                        f"重复候选 {merged.code} 存在冲突（{'；'.join(conflict_details)}）；"
                         f"已按保守策略取 {merged.rule_status.value}，模型分数不覆盖规则结论。"
                     ),
                     exam_item_ids=(merged.exam_item_id,),
                 )
             )
+    dropped.sort(key=_candidate_sort_key)
     return kept, dropped, conflicts
 
 
@@ -395,29 +397,80 @@ def _status_rank(status: CandidateRuleStatus) -> int:
     return _STATUS_PRECEDENCE.index(status)
 
 
+_COST_LEVEL_PRECEDENCE: tuple[CostLevel, ...] = (
+    CostLevel.LOW,
+    CostLevel.MEDIUM,
+    CostLevel.HIGH,
+)
+
+
+def _candidate_sort_key(candidate: PlanCandidate) -> tuple:
+    """重复候选的固定排序：规则最严格优先，其次分数高、编码字典序。"""
+
+    score = candidate.score if candidate.score is not None else -1.0
+    return (
+        _status_rank(candidate.rule_status),
+        -score,
+        candidate.code,
+        candidate.name,
+        candidate.category,
+        candidate.cost_level.value,
+        candidate.rule_set_version or "",
+    )
+
+
+def _sorted_group(group: Sequence[PlanCandidate]) -> list[PlanCandidate]:
+    return sorted(group, key=_candidate_sort_key)
+
+
 def _merge_duplicates(
     group: Sequence[PlanCandidate],
-) -> tuple[PlanCandidate, bool]:
-    """返回合并后的候选，以及是否存在不同规则结论。"""
+) -> tuple[PlanCandidate, PlanCandidate, tuple[str, ...]]:
+    """返回（合并结果、保留的原始记录、冲突说明），字段策略与输入顺序无关。
 
+    字段策略：规则结论取最严格、分数取最高、说明与证据取排序并集、
+    含辐射取真、费用等级取较高、编码等文本字段取字典序最小的一条；
+    规则集版本不一致时写入排序后的并集（超长则取排序后第一个）并在冲突说明中列出。
+    """
+
+    ordered = _sorted_group(group)
+    primary = ordered[0]
     scores = [item.score for item in group if item.score is not None]
-    ranked = sorted(
-        group,
-        key=lambda item: (_status_rank(item.rule_status), -(item.score or 0.0), item.code),
-    )
-    strictest = ranked[0]
-    notes = tuple(dict.fromkeys(note for item in group for note in item.rule_notes))
-    evidence = tuple(dict.fromkeys(ref for item in group for ref in item.rule_evidence_refs))
+    notes = tuple(sorted({note for item in group for note in item.rule_notes}))
+    evidence = tuple(sorted({ref for item in group for ref in item.rule_evidence_refs}))
     versions = sorted({item.rule_set_version for item in group if item.rule_set_version})
-    merged = strictest.model_copy(
+    statuses = sorted({item.rule_status.value for item in group}, key=_status_rank_by_value)
+    joined_versions = "|".join(versions)
+    if not versions:
+        merged_version = None
+    elif len(versions) == 1:
+        merged_version = versions[0]
+    else:
+        merged_version = joined_versions if len(joined_versions) <= 64 else versions[0]
+
+    merged = primary.model_copy(
         update={
             "score": max(scores) if scores else None,
             "rule_notes": notes,
             "rule_evidence_refs": evidence,
-            "rule_set_version": versions[0] if len(versions) == 1 else strictest.rule_set_version,
+            "rule_set_version": merged_version,
+            "radiation": any(item.radiation for item in group),
+            "cost_level": max(
+                (item.cost_level for item in group),
+                key=_COST_LEVEL_PRECEDENCE.index,
+            ),
         }
     )
-    return merged, len({item.rule_status for item in group}) > 1
+    details: list[str] = []
+    if len(statuses) > 1:
+        details.append(f"规则结论不一致（{'、'.join(statuses)}）")
+    if len(versions) > 1:
+        details.append(f"规则集版本不一致（{'、'.join(versions)}）")
+    return merged, primary, tuple(details)
+
+
+def _status_rank_by_value(status: str) -> int:
+    return _status_rank(CandidateRuleStatus(status))
 
 
 def _order_candidates(candidates: Sequence[PlanCandidate]) -> list[PlanCandidate]:
