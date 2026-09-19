@@ -85,10 +85,13 @@
 
 选取规则（确定性，与输入顺序无关）：
 
-1. 按 `exam_item_id` 合并重复候选：**分数取最高，规则结论取最严格**
-   （`BLOCKED` > `DEFERRED` > `REVIEW_REQUIRED` > `NOT_CONFIGURED`/`ALLOWED`），
-   规则说明与证据引用取并集。模型分数或更高分记录不得覆盖禁止与暂缓结论；出现不同规则
-   结论时写入 `duplicate_rule_status_conflict` 冲突，并在结果 `notes` 中说明。
+1. 按 `exam_item_id` 合并重复候选，字段策略固定且与输入顺序无关：
+   **规则结论取最严格**（`BLOCKED` > `DEFERRED` > `REVIEW_REQUIRED` > `NOT_CONFIGURED`/`ALLOWED`）、
+   分数取最高、规则说明与证据引用取**排序并集**、含辐射取真、费用等级取较高、
+   编码等文本字段取字典序最小的一条；规则集版本不一致时写入排序并集（超长时取排序后第一个）。
+   分组按 `exam_item_id`、被移除记录与排除条目均按固定顺序输出，N 条合并为 1 条只产生
+   N-1 条 `duplicate_candidate` 排除记录。模型分数不得覆盖禁止与暂缓结论；出现规则结论或
+   规则集版本冲突时写入 `duplicate_rule_status_conflict`，并在结果 `notes` 中说明。
 2. 规则禁止项（`BLOCKED` / `DEFERRED`）在任何档位都不进入 `items`，即使分数最高或预算充足。
 3. 规则要求复核项（`REVIEW_REQUIRED`）在所有档位优先保留，且不因预算或档位策略被删除；
    它们占用档位项目数，超出上限时产生 `review_items_exceed_tier_size` 冲突并保留全部。
@@ -104,6 +107,9 @@
 ## 费用与预算语义
 
 * 金额一律使用最小货币单位整数（分），全程无浮点累加；展示用 `format_amount` 整数拆分。
+* 币种由 `normalize_currency_code` 统一处理：去掉首尾空白、转大写、必须是三字母 ASCII 代码。
+  预算（`BudgetSpec.currency`）与价格（`ExamItemPrice.currency`）共用同一校验，因此 `cny`
+  不会被当作与 `CNY` 不同而绕过同币种预算比较；非三字母代码（如 `人民币`、`C1Y`）直接拒绝。
 * 每条价格记录包含金额、币种、来源、可核验链接、适用机构或地区、生效与失效日期、
   是否演示价。`is_demo_price=False` 时强制要求 `source_url`，否则模型校验失败。
 * 来源校验双重生效：`source` 与 `source_url` 去除首尾空白后不得为空，非演示价的链接必须是
@@ -244,6 +250,10 @@ python -m ruff check app/services/plan_builder.py app/services/pricing.py app/sc
 | 复用规则引擎输出 | `test_plan_builder_can_consume_rule_engine_output` |
 | 重复候选规则冲突按保守策略合并 | `test_duplicate_with_conflicting_rule_status_keeps_blocked`、`test_duplicate_deferred_beats_higher_score_allowed` |
 | 重复候选合并保留全部规则证据 | `test_duplicate_merge_keeps_all_rule_evidence` |
+| 重复合并与输入顺序无关 | `test_duplicate_merge_is_order_independent` |
+| 重复合并取保守字段（辐射/费用等级/版本） | `test_duplicate_merge_takes_restrictive_attributes` |
+| 重复排除条数等于实际移除数 | `test_duplicate_pair_produces_single_exclusion_entry` |
+| 币种大小写不绕过预算筛选 | `test_budget_currency_lowercase_is_normalized`、`test_budget_currency_rejects_invalid_codes` |
 | 跨币种预算不混算 | `test_cross_currency_budget_filter_does_not_mix_currencies` |
 | 预算压力下三档仍嵌套 | `test_tiers_stay_nested_under_budget_pressure`、`test_inherited_items_record_origin_tier` |
 | 入选项目保留规则依据 | `test_selected_items_keep_rule_evidence` |
