@@ -30,6 +30,18 @@ def format_amount(amount_cents: int, currency: str) -> str:
     return f"{sign}{units}.{cents:02d} {currency}"
 
 
+def normalize_currency_code(value: str) -> str:
+    """统一币种写法：去掉首尾空白并转大写，只接受三字母代码。
+
+    预算与价格共用同一个函数，保证 ``cny`` 与 ``CNY`` 不会绕过同币种比较。
+    """
+
+    cleaned = value.strip().upper()
+    if len(cleaned) != 3 or not cleaned.isascii() or not cleaned.isalpha():
+        raise ValueError("币种必须是三字母代码，例如 CNY")
+    return cleaned
+
+
 class ExamItemPrice(BaseModel):
     """一条可追溯的项目价格记录。"""
 
@@ -37,7 +49,8 @@ class ExamItemPrice(BaseModel):
 
     exam_item_code: str = Field(min_length=1, max_length=64)
     amount_cents: int = Field(ge=0)
-    currency: str = Field(default=DEFAULT_CURRENCY, min_length=3, max_length=3)
+    # 长度校验交给 normalize_currency_code，先允许空白再统一清理。
+    currency: str = Field(default=DEFAULT_CURRENCY, max_length=16)
     source: str = Field(min_length=1, max_length=300)
     source_url: str | None = Field(default=None, max_length=500)
     institution: str | None = Field(default=None, max_length=200)
@@ -50,10 +63,7 @@ class ExamItemPrice(BaseModel):
     @field_validator("currency")
     @classmethod
     def normalize_currency(cls, value: str) -> str:
-        normalized = value.strip().upper()
-        if not normalized.isalpha():
-            raise ValueError("币种必须是三字母代码，例如 CNY")
-        return normalized
+        return normalize_currency_code(value)
 
     @field_validator("exam_item_code")
     @classmethod
