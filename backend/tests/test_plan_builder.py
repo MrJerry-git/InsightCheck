@@ -675,3 +675,151 @@ def test_selected_items_keep_rule_evidence():
     snapshot = to_snapshot(result)
     deep_payload = next(plan for plan in snapshot["tiers"] if plan["tier"] == "deep")
     assert deep_payload["items"][0]["rule_evidence_refs"] == ["check-2025-06-22"]
+
+
+def test_budget_currency_lowercase_is_normalized():
+    """预算写成小写 cny 时也必须与价格同币种比较，不能绕过预算筛选。"""
+
+    budget = BudgetSpec(limit_cents=100, currency="cny")
+    assert budget.currency == "CNY"
+    candidates = [candidate("LIVER_FUNCTION_PANEL", score=0.80, cost_level=CostLevel.LOW)]
+    result = build_plan(request_for(candidates, budget=budget))
+    standard = tier(result, PlanTier.STANDARD)
+
+    assert standard.items == ()
+    assert any(entry.reason_code is ExclusionReason.BUDGET_LIMIT for entry in standard.excluded)
+    assert standard.cost_summary.known_total_cents == 0
+
+
+def test_budget_currency_rejects_invalid_codes():
+    for invalid in ("人民币", "CN", "C1Y", "  ", "cnyy"):
+        with pytest.raises(ValidationError):
+            BudgetSpec(limit_cents=100, currency=invalid)
+        with pytest.raises(ValidationError):
+            ExamItemPrice(
+                exam_item_code="LIVER_FUNCTION_PANEL",
+                amount_cents=12_000,
+                currency=invalid,
+                source="演示价",
+                effective_from=date(2024, 1, 1),
+            )
+    assert BudgetSpec(limit_cents=100, currency=" cny ").currency == "CNY"
+    assert (
+        ExamItemPrice(
+            exam_item_code="LIVER_FUNCTION_PANEL",
+            amount_cents=12_000,
+            currency="cny",
+            source="演示价",
+            effective_from=date(2024, 1, 1),
+        ).currency
+        == "CNY"
+    )
+
+
+def test_duplicate_merge_is_order_independent():
+    base = [
+        candidate(
+            "LIVER_FUNCTION_PANEL",
+            score=0.20,
+            cost_level=CostLevel.LOW,
+            radiation=True,
+            rule_status=CandidateRuleStatus.BLOCKED,
+            rule_notes=("规则 BLOCK", "补充说明"),
+            exam_item_id="item-liver",
+        ).model_copy(
+            update={"rule_evidence_refs": ("ev-2", "ev-1"), "rule_set_version": "sha256:v9"}
+        ),
+        candidate(
+            "LIVER_FUNCTION_PANEL",
+            score=0.90,
+            cost_level=CostLevel.MEDIUM,
+            rule_status=CandidateRuleStatus.ALLOWED,
+            rule_notes=("允许说明",),
+            exam_item_id="item-liver",
+        ).model_copy(update={"rule_evidence_refs": ("ev-3",), "rule_set_version": "sha256:v2"}),
+        candidate("THYROID_US", score=0.50, cost_level=CostLevel.MEDIUM),
+    ]
+    forward = build_plan(request_for(base))
+    backward = build_plan(request_for(list(reversed(base))))
+    shuffled = build_plan(request_for([base[2], base[0], base[1]]))
+
+    assert forward.model_dump(mode="json") == backward.model_dump(mode="json")
+    assert forward.model_dump(mode="json") == shuffled.model_dump(mode="json")
+    assert "LIVER_FUNCTION_PANEL" not in codes(tier(forward, PlanTier.DEEP))
+    assert any(
+        ConflictCode.DUPLICATE_RULE_STATUS_CONFLICT in {c.code for c in plan.conflicts}
+        for plan in forward.tiers
+    )
+
+
+def test_duplicate_merge_takes_restrictive_attributes():
+    low = candidate(
+        "THYROID_US", score=0.40, cost_level=CostLevel.LOW, exam_item_id="item-thyroid"
+    ).model_copy(
+        update={
+            "rule_notes": ("备注 B",),
+            "rule_evidence_refs": ("ev-b",),
+            "rule_set_version": "sha256:v2",
+        }
+    )
+    high = candidate(
+        "THYROID_US", score=0.80, cost_level=CostLevel.HIGH, exam_item_id="item-thyroid"
+    ).model_copy(
+        update={
+            "rule_notes": ("备注 A",),
+            "rule_evidence_refs": ("ev-a",),
+            "rule_set_version": "sha256:v1",
+        }
+    )
+    radiation = candidate(
+        "BONE_DENSITY",
+        score=0.90,
+        cost_level=CostLevel.MEDIUM,
+        radiation=True,
+        exam_item_id="item-bone",
+    )
+    radiation_plain = candidate(
+        "BONE_DENSITY",
+        score=0.30,
+        cost_level=CostLevel.MEDIUM,
+        radiation=False,
+        exam_item_id="item-bone",
+    )
+    result = build_plan(request_for([low, high, radiation, radiation_plain]))
+    simplified = tier(result, PlanTier.SIMPLIFIED)
+    standard = tier(result, PlanTier.STANDARD)
+    deep = tier(result, PlanTier.DEEP)
+
+    # 费用等级取较高的一条：合并后为 high，因此基础档按费用等级策略排除，标准档选入。
+    assert "THYROID_US" not in codes(simplified)
+    assert any(
+        entry.code == "THYROID_US" and entry.reason_code is ExclusionReason.TIER_COST_LEVEL_POLICY
+        for entry in simplified.excluded
+    )
+    merged = next(item for item in standard.items if item.code == "THYROID_US")
+    assert merged.score == 0.80
+    assert merged.rule_notes == ("备注 A", "备注 B")
+    assert merged.rule_evidence_refs == ("ev-a", "ev-b")
+    assert merged.rule_set_version == "sha256:v1|sha256:v2"
+    # 含辐射取真：合并后按含辐射处理，标准档排除，深入档选入。
+    assert "BONE_DENSITY" not in codes(standard)
+    bone = next(item for item in deep.items if item.code == "BONE_DENSITY")
+    assert bone.radiation is True
+
+
+def test_duplicate_pair_produces_single_exclusion_entry():
+    candidates = [
+        candidate("LIVER_FUNCTION_PANEL", score=0.20, cost_level=CostLevel.LOW),
+        candidate("LIVER_FUNCTION_PANEL", score=0.90, cost_level=CostLevel.LOW),
+    ]
+    result = build_plan(request_for(candidates))
+    standard = tier(result, PlanTier.STANDARD)
+    duplicate_entries = [
+        entry
+        for entry in standard.excluded
+        if entry.reason_code is ExclusionReason.DUPLICATE_CANDIDATE
+    ]
+
+    assert len(duplicate_entries) == 1
+    assert codes(standard) == ["LIVER_FUNCTION_PANEL"]
+    assert standard.items[0].score == 0.90
