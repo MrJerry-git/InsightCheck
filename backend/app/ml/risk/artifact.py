@@ -256,7 +256,8 @@ class BaselineRiskAdapter(RiskModel):
 
     @property
     def is_ready(self) -> bool:
-        return self.card is not None and self._pipeline is not None
+        """是否可以提供推理，与加载摘要和推理入口使用同一就绪判断。"""
+        return self.readiness() is None
 
     @property
     def model_version(self) -> str | None:

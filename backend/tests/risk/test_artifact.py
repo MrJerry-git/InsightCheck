@@ -215,6 +215,7 @@ def test_unfrozen_card_blocks_assess_and_predict_consistently(tmp_path, status):
 
     inspected = BaselineRiskAdapter.load(target)
     assert inspected.card.review_status == status
+    assert inspected.is_ready is False
     assert inspected.readiness() == (
         RiskUnavailableReason.REVIEW_NOT_FROZEN,
         f"task review status is {status}; only a FROZEN task can be served, "
@@ -233,6 +234,9 @@ def test_readiness_helper_is_the_single_decision_point(tmp_path):
     target = tmp_path / "artifact-logistic"
     model = trained(tmp_path)
 
+    assert model.is_ready is True
+    assert BaselineRiskAdapter().is_ready is False
+    assert BaselineRiskAdapter(card()).is_ready is False
     assert serving_readiness(model.card, pipeline_loaded=True) is None
     assert (
         serving_readiness(None, pipeline_loaded=True)[0]
