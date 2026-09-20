@@ -57,6 +57,14 @@ def test_exclusions(field):
     assert assess(PreventionRequest(**body))["risk"] is None
 
 
+def test_stale_record_does_not_replace_symptom_referral_reason():
+    body = case() | {"symptomatic": True}
+    body["visits"][0]["date"] = "2020-01-01"
+    result = assess(PreventionRequest(**body))
+    assert result["risk"] is None
+    assert "当前不适" in result["recommendations"][0]["reason"]
+
+
 def test_normal_does_not_automatically_repeat_annually():
     body = case()
     body["visits"][0].update(dm=False, glucose_status="normal", hba1c=5.2)

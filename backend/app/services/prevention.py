@@ -51,7 +51,11 @@ def assess(request: PreventionRequest) -> dict:
                       "within_next_year": due <= horizon if due else None})
 
     if request.symptomatic or request.pregnant:
-        add("clinical", "临床评估", "先由医生评估", blockers[-1], "PREVENT",
+        clinical_reason = (
+            "存在当前不适，应就医评估，不使用常规体检计划处理症状。"
+            if request.symptomatic else "妊娠场景超出本比赛版适用范围，应由医生评估。"
+        )
+        add("clinical", "临床评估", "先由医生评估", clinical_reason, "PREVENT",
             basis="平台适用范围保护")
     else:
         glucose_visits = [v for v in visits if v.fasting_glucose is not None
