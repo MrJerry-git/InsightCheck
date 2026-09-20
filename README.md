@@ -2,6 +2,8 @@
 
 ## 比赛版入口：心血管体检规划
 
+[下载参赛版前端演示与测试资料包](docs/competition-test-kit/README.md)：仿真报告 PDF、图片、文字、边界场景与验收清单。
+
 新增 PREVENT 实际风险计算、历史指标轨迹、下一年度检查建议、报告保存回看与导出。
 双击 `start-competition.cmd`，或打开 `http://127.0.0.1:3030/competition`。
 双击 `stop-competition.cmd` 停止比赛脚本创建的服务。
