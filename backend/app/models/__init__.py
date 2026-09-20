@@ -19,9 +19,11 @@ from app.models.domain import (
     RiskPrediction,
 )
 from app.models.imports import ImportBatch, ImportedRecord
+from app.models.prevention import PreventionReport
 from app.models.pricing import ExamItemPriceRecord
 
 __all__ = [
+    "PreventionReport",
     "AIReport",
     "Base",
     "ExamHistory",
