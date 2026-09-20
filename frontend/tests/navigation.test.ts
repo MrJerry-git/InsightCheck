@@ -5,6 +5,7 @@ import { allNavigationPaths } from "../lib/navigation";
 describe("navigation", () => {
   it("contains every top-level product route", () => {
     expect(allNavigationPaths).toEqual([
+      "/competition",
       "/dashboard",
       "/patients",
       "/health-records",
@@ -21,4 +22,3 @@ describe("navigation", () => {
     ]);
   });
 });
-
