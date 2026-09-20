@@ -56,3 +56,16 @@ Circulation. DOI: 10.1161/CIRCULATIONAHA.123.067626。
 仅摘述规则并链接来源，不复制完整指南；不声称获得指南机构认可。
 NHANES 审计使用 CDC 公开匿名数据；不提交下载的个体记录，只提交下载地址、
 校验和、字段映射、聚合计数与复现程序。不得尝试识别或关联个人身份。
+# 智能资料导入新增组件
+
+本地推理使用 Qwen3-VL-4B-Instruct 的 Ollama 量化分发 `qwen3-vl:4b-instruct`。
+官方权重与量化模型页面标注 Apache-2.0；原模型归 Qwen 团队所有，未修改权重，
+不声称官方背书。权重不包含在本仓库内。
+来源：https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct
+量化：https://ollama.com/library/qwen3-vl:4b-instruct
+许可证：https://www.apache.org/licenses/LICENSE-2.0
+
+新增文档读取依赖 Pillow（HPND）、pypdfium2（Apache-2.0/BSD-3-Clause，PDFium
+随包第三方 notices 亦须保留）；Ollama 运行程序为 MIT，单独下载。
+重新分发时保留相关版权、许可证、NOTICE，并标注对上游文件的修改。
+本仓库自己的接入代码不代表重新授予上游商标或医疗用途认证。

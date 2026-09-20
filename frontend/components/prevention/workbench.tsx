@@ -5,6 +5,7 @@ import { Activity, ArrowRight, Download, FileCheck2, HeartPulse, Plus, Save, Tra
 import { example, manual } from "./examples";
 import type { Intake, Report, Visit } from "./types";
 import "./workbench.css";
+import { SmartImport } from "./smart-import";
 
 const fields: [keyof Visit, string, string, number, number, string][] = [
   ["age", "检查时年龄", "岁", 18, 100, "1"],
@@ -90,6 +91,7 @@ export function PreventionWorkbench() {
       </div><HeartPulse size={112} strokeWidth={1} aria-hidden="true" />
     </section>
     <div className="pv-steps"><span>01 整理已确认资料</span><ArrowRight size={16} /><span>02 评估长期风险</span><ArrowRight size={16} /><span>03 规划未来一年</span></div>
+    <SmartImport onApply={change} disabled={busy} />
     <section className="pv-panel pv-toolbar no-print">
       <div><h2>开始一次规划</h2><p>可使用示例体验，或导入结构化资料。示例不代表真实患者或效果验证。</p></div>
       <div className="pv-actions">
@@ -97,7 +99,7 @@ export function PreventionWorkbench() {
         {(["normal", "prediabetes", "diabetes"] as const).map((kind, i) => <button disabled={busy} key={kind} onClick={() => change(example(kind))}>{["正常随访示例", "前期随访示例", "慢病随访示例"][i]}</button>)}
         <label className="pv-file">导入 JSON<input aria-label="导入结构化体检资料" disabled={busy} type="file" accept=".json" onChange={e => { void importFile(e.target.files?.[0]); e.target.value = ""; }} /></label>
       </div>
-      <p>首次使用：选择示例 → 导出资料模板 → 按同样结构填写。仅接收已确认指标，本版不自动解读 PDF 或作出诊断。</p>
+      <p>也可选择示例 → 导出资料模板 → 按同样结构填写。AI 导入需先核对，不自动作出诊断。</p>
     </section>
     {error && <div role="alert" className="pv-alert">{error}</div>}
     {notice && <p role="status" className="pv-notice">{notice}</p>}
