@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes.auth import router as auth_router
 from app.api.routes.crud import router as crud_router
 from app.api.routes.health import router as health_router
+from app.api.routes.import_tasks import router as import_tasks_router
 from app.api.routes.imports import router as imports_router
 from app.api.routes.lesion_analysis import router as lesion_analysis_router
 from app.api.routes.prevention import router as prevention_router
@@ -20,6 +21,7 @@ api_router.include_router(prevention_router)
 api_router.include_router(health_router)
 api_router.include_router(workflow_router)
 api_router.include_router(imports_router)
+api_router.include_router(import_tasks_router)
 api_router.include_router(standardization_router)
 api_router.include_router(lesion_analysis_router)
 api_router.include_router(recommendation_ranking_router)

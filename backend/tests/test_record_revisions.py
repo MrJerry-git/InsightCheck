@@ -196,11 +196,16 @@ def test_delete_keeps_snapshot_and_is_traceable(test_app, db_session):
         assert [item["action"] for item in revisions] == ["delete", "create"]
         assert revisions[0]["after"] is None
         assert revisions[0]["before"]["value"] == 35
-        # 删除后档案历史中仍保留来源可追溯的记录。
-        assert (
-            client.get(f"/api/v1/profiles/{patient_id}/revisions", headers=headers).json()["count"]
-            == 3
-        )
+        # 档案历史保留完整链条：建档、检查记录、指标新增、指标删除。
+        profile = client.get(
+            f"/api/v1/profiles/{patient_id}/revisions", headers=headers
+        ).json()
+        assert profile["count"] == 4
+        assert {item["entity_type"] for item in profile["revisions"]} == {
+            "patient",
+            "health_check",
+            "lab_metric",
+        }
 
 
 def test_qualitative_and_text_values_are_supported(test_app, db_session):
