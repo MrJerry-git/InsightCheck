@@ -14,7 +14,10 @@ import getpass
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
+from app.core.backup import BackupError, create_backup, restore_backup
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.enums import AccountRole
 from app.services.auth_service import AuthError, AuthService
@@ -63,6 +66,52 @@ def _list_accounts(_: argparse.Namespace) -> int:
     return 0
 
 
+def _backup(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    try:
+        result = create_backup(settings.database_url, Path(args.output))
+    except BackupError as exc:
+        print(f"备份失败：{exc}", file=sys.stderr)
+        return 1
+    print(f"已备份到 {result.archive_path}（{result.database_bytes} 字节）")
+    print(f"清单：{result.manifest_path}")
+    print(f"迁移版本：{result.revision or '未知'}　SHA256：{result.sha256}")
+    return 0
+
+
+def _restore(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    try:
+        result = restore_backup(
+            Path(args.input), settings.database_url, force=args.force
+        )
+    except BackupError as exc:
+        print(f"恢复失败：{exc}", file=sys.stderr)
+        return 1
+    print(f"已恢复到 {result['restored_to']}（迁移版本 {result['alembic_revision'] or '未知'}）")
+    if result["safety_copy"]:
+        print(f"覆盖前的安全副本：{result['safety_copy']}")
+    print("请执行 python -m alembic upgrade head 确认迁移版本一致后启动服务。")
+    return 0
+
+
+def _backup_status(_: argparse.Namespace) -> int:
+    from app.core.backup import current_revision, sqlite_path
+
+    settings = get_settings()
+    try:
+        database = sqlite_path(settings.database_url)
+    except BackupError as exc:
+        print(f"无法检查：{exc}", file=sys.stderr)
+        return 1
+    exists = database.exists()
+    print(f"数据库：{database}")
+    print(f"存在：{exists}")
+    if exists:
+        print(f"迁移版本：{current_revision(database) or '未知'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="循影定检账号运维命令")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -78,6 +127,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     listing = subparsers.add_parser("list-accounts", help="列出账号")
     listing.set_defaults(handler=_list_accounts)
+
+    backup = subparsers.add_parser("backup", help="备份 SQLite 数据库并生成摘要清单")
+    backup.add_argument("--output", required=True, help="备份目录")
+    backup.set_defaults(handler=_backup)
+
+    restore = subparsers.add_parser("restore", help="从备份恢复数据库")
+    restore.add_argument("--input", required=True, help="备份文件路径")
+    restore.add_argument(
+        "--force", action="store_true", help="允许覆盖已存在的数据库（默认保留安全副本）"
+    )
+    restore.set_defaults(handler=_restore)
+
+    status = subparsers.add_parser("backup-status", help="查看数据库位置与迁移版本")
+    status.set_defaults(handler=_backup_status)
     return parser
 
 
