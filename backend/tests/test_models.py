@@ -21,6 +21,7 @@ EXPECTED_TABLES = {
     "patients",
     "recommendation_items",
     "recommendations",
+    "record_revisions",
     "risk_predictions",
 }
 

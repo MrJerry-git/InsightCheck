@@ -21,6 +21,7 @@ from app.models.domain import (
 )
 from app.models.imports import ImportBatch, ImportedRecord
 from app.models.pricing import ExamItemPriceRecord
+from app.models.records import RecordRevision
 
 __all__ = [
     "Account",
@@ -43,5 +44,6 @@ __all__ = [
     "Patient",
     "Recommendation",
     "RecommendationItem",
+    "RecordRevision",
     "RiskPrediction",
 ]
