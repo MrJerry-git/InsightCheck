@@ -1,5 +1,20 @@
 # InsightCheck 循影定检
 
+## 比赛版入口：心血管体检规划
+
+[下载参赛版前端演示与测试资料包](docs/competition-test-kit/README.md)：仿真报告 PDF、图片、文字、边界场景与验收清单。
+
+新增 PREVENT 实际风险计算、历史指标轨迹、下一年度检查建议、报告保存回看与导出。
+双击 `start-competition.cmd`，或打开 `http://127.0.0.1:3030/competition`。
+双击 `stop-competition.cmd` 停止比赛脚本创建的服务。
+基础计算无需 R、GPU 或模型服务密钥。新增“体检资料智能导入”使用本地 Qwen3-VL 4B，
+首次双击 `start-smart-import.cmd` 安装模型；需要额外内存/显存，见
+[智能导入说明](docs/SMART_IMPORT.md)。完整操作、数据核验及适用边界见
+[比赛版说明](docs/COMPETITION_EDITION.md)和[第三方许可](THIRD_PARTY_NOTICES.md)。
+这是范围收敛后的参赛闭环，不代表原 2.0 全范围已完成或临床有效性已验证。
+
+以下为原平台建设背景与基础环境说明。
+
 本项目以《循影定检——基于 LightGBM 与 DeepFM 的个性化体检方案推荐》申报书为建设目标。参与 iCan 是推动项目改进与实现的阶段性实践；InsightCheck 统一管理后续的源码、技术文档和研究进展。
 
 当前基础来自 iCan 原型，包含数据标准化、纵向特征、病灶匹配、DeepFM 和规则引擎实现。现已接通档案、历史分析、合成 LightGBM + DeepFM 推理、规则检查和方案保存回看闭环；真实数据模型实验尚未完成。DeepFM 匹配分数必须经过规则引擎，仍不是疾病概率或最终体检方案。
