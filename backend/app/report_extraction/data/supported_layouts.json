@@ -1,0 +1,26 @@
+{
+  "registry_version": "report-structuring-v1",
+  "generated_at": "2026-09-20",
+  "maintainer": "王宏锦（WHJ-2007），任务 H04",
+  "scope_note": "已登记的报告版式清单。识别逻辑按 pattern_id 实现；新机构版式需在此登记并补充自制样例验证后才能声称支持。",
+  "layouts": [
+    {
+      "layout_id": "lab_table_row",
+      "description": "行式检验单：一行为 `项目  结果  单位  参考区间  提示`，列间以 2 个以上空格分隔",
+      "pattern_ids": ["table_row"],
+      "version": "1.0"
+    },
+    {
+      "layout_id": "kv_report",
+      "description": "键值式报告：一行为 `项目：结果` 或 `项目: 结果 单位`",
+      "pattern_ids": ["kv_row", "table_row"],
+      "version": "1.0"
+    },
+    {
+      "layout_id": "imaging_section_report",
+      "description": "影像/超声段落式报告：`影像所见/超声所见` 段与 `影像结论/超声提示` 段，可含行式数据",
+      "pattern_ids": ["imaging_sections", "table_row", "kv_row"],
+      "version": "1.0"
+    }
+  ]
+}
