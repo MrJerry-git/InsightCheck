@@ -135,6 +135,7 @@ cd backend && PYTHONPATH=. python -c "from app.main import create_app; print(len
 | T10 | `feat/report-qa` | 问答 API | `POST /qa/ask`、`GET /qa/history` |
 | T11 | `feat/ops-deploy` | 运行与运维 | `/health/detail`、结构化访问日志、`backup/restore` CLI |
 | T12 | `feat/backend-integration` | 集成与联调 | 端到端测试与本文档更新 |
+| AI-T01—AI-T08 | `feat/conversational-import` | 参赛版对话式档案管理后端 | `/api/v1/prevention/conversation/*`（独立于 T 系列，PR #39） |
 
 合并后 `create_app().openapi()["paths"]` 为 **96 条路径**（当前 `main` 基线 51 条），
 核对命令与第 0 节一致。

@@ -20,9 +20,13 @@ H 系列服务仍在各自分支/PR 中。
 | T10 | 问答 API 及服务连接 | 已实现（分支，模型待 H08） | `feat/report-qa` PR #36 |
 | T11 | 启停、迁移、部署、日志、健康检查、备份恢复 | 已实现（分支） | `feat/ops-deploy` PR #37 |
 | T12 | 总体后端集成与前端联调 | 本文 + 端到端测试 | `feat/backend-integration` PR #38 |
+| AI-T01—AI-T08 | 参赛版对话式体检档案管理后端 | 已实现（独立分支，279 测试通过） | `feat/conversational-import` PR #39 |
 
 “已实现（分支）”指代码、迁移与自动化测试均在本分支上通过，**合并进 `main` 后才算对全体可见**。
 合并顺序与依赖见每个 PR 描述（#30 → #31 → #32 → #33 → #34 → #35 → #36 → #37 → #38）。
+`feat/conversational-import`（PR #39）从 `main` 独立建立，可与上述链条并行；
+两者都合并时会出现两个 alembic head（都挂在 `e021a0b10001` 之后），
+合并第二个 PR 时把其迁移的 `down_revision` 改到对方即可。
 
 ## 2. 接口面
 
@@ -40,6 +44,7 @@ H 系列服务仍在各自分支/PR 中。
 | 报告与问答 | `/api/v1/reports*`、`/api/v1/qa/*` | 中文 PDF、JSON 证据、依据问答 |
 | 管理 | `/api/v1/admin/*` | 映射队列、价格、规则、模型状态、审计 |
 | 运行 | `/health`、`/api/v1/health/detail` | 探活与部署明细 |
+| 参赛版对话导入 | `/api/v1/prevention/conversation/*` | AI-T01—AI-T08：会话、草稿、确认、规划、新建档案（PR #39） |
 
 旧接口（`/api/v1/workflow/*`、`/api/v1/prevention/*`、`/api/v1/imports`）保持可读，
 其中 `/workflow/patients`、`/workflow/records`、`/workflow/plans` 已接入档案归属校验。
@@ -100,6 +105,7 @@ python -m app.cli backup --output /var/backups/xunying
 | 事项 | 现状 | 需要 |
 | --- | --- | --- |
 | 前端 C01—C12 | 未接入 | 陈子正按本文与契约接入；`AUTH_REQUIRED` 切换与 C01 对齐 |
+| 参赛版对话导入前端 | 未接入 | 陈子正接入对话组件、人体点亮、历史详情与"＋ 新建档案"（AI-T08 前端部分） |
 | H 系列解析/分析服务 | 未合并 | 王宏锦合并后，把分析发现来源切到该服务（接口不变） |
 | 疾病风险模型 / DeepFM | 未接入 | 数据到位后按 H09 训练与替换；当前不产生概率 |
 | 语言模型问答 | 未接入 | 配置 `LLM_PROVIDER`/`LLM_BASE_URL` 后启用；未配置时结构化回答 |
