@@ -56,6 +56,10 @@ class Patient(IdMixin, CreatedAtMixin, Base):
     gender: Mapped[Gender] = mapped_column(enum_column(Gender, "gender"), default=Gender.UNKNOWN)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # T01：档案归属账号；为空表示历史/演示档案，仅管理员可访问。
+    owner_account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     health_checks: Mapped[list[HealthCheck]] = relationship(
         back_populates="patient", cascade="all, delete-orphan", passive_deletes=True

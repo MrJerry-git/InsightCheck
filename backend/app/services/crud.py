@@ -1,11 +1,17 @@
-from typing import Any, Generic, TypeVar
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.ownership import scope_statement
 from app.models.base import Base
 from app.repositories import SqlAlchemyRepository
+
+if TYPE_CHECKING:  # 仅类型标注需要，避免运行期循环导入
+    from app.api.dependencies import Principal
 
 ModelT = TypeVar("ModelT", bound=Base)
 
@@ -26,8 +32,11 @@ class CrudService(Generic[ModelT]):
         self.repository = SqlAlchemyRepository(session, model)
 
     def create(self, payload: BaseModel) -> ModelT:
+        return self.create_values(payload.model_dump())
+
+    def create_values(self, values: dict[str, Any]) -> ModelT:
         try:
-            entity = self.repository.add(payload.model_dump())
+            entity = self.repository.add(values)
             self.session.commit()
             self.session.refresh(entity)
             return entity
@@ -41,8 +50,18 @@ class CrudService(Generic[ModelT]):
             raise EntityNotFoundError(entity_id)
         return entity
 
-    def list(self, *, offset: int = 0, limit: int = 100) -> list[ModelT]:
-        return self.repository.list(offset=offset, limit=limit)
+    def list(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        scope: tuple[type[ModelT], Principal] | None = None,
+    ) -> list[ModelT]:
+        transform = None
+        if scope is not None:
+            model, principal = scope
+            transform = lambda statement: scope_statement(statement, model, principal)  # noqa: E731
+        return self.repository.list(offset=offset, limit=limit, transform=transform)
 
     def update(self, entity_id: str, payload: BaseModel) -> ModelT:
         entity = self.get(entity_id)

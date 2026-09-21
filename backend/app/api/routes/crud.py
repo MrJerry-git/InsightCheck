@@ -3,9 +3,22 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import (
+    Principal,
+    ensure_patient_access,
+    get_db,
+    require_admin,
+    require_write_access,
+    scope_patient_statement,
+)
+from app.api.ownership import (
+    ensure_patient_write_scope,
+    get_visible_entity,
+    is_patient_scoped,
+)
 from app.models import (
     AIReport,
     ExamHistory,
@@ -82,6 +95,8 @@ class CrudSpec:
     create_schema: type[BaseModel]
     update_schema: type[BaseModel]
     read_schema: type[BaseModel]
+    # 写入权限：目录类配置只有管理员能改；业务数据由写入角色维护，并按档案归属过滤。
+    admin_only_write: bool = False
 
 
 CRUD_SPECS = (
@@ -101,6 +116,7 @@ CRUD_SPECS = (
         MetricDictionaryCreate,
         MetricDictionaryUpdate,
         MetricDictionaryRead,
+        admin_only_write=True,
     ),
     CrudSpec(
         "lab_metric", "/lab-metrics", LabMetric, LabMetricCreate, LabMetricUpdate, LabMetricRead
@@ -130,7 +146,15 @@ CRUD_SPECS = (
         LesionObservationUpdate,
         LesionObservationRead,
     ),
-    CrudSpec("exam_item", "/exam-items", ExamItem, ExamItemCreate, ExamItemUpdate, ExamItemRead),
+    CrudSpec(
+        "exam_item",
+        "/exam-items",
+        ExamItem,
+        ExamItemCreate,
+        ExamItemUpdate,
+        ExamItemRead,
+        admin_only_write=True,
+    ),
     CrudSpec(
         "exam_history",
         "/exam-histories",
@@ -146,6 +170,7 @@ CRUD_SPECS = (
         MedicalRuleCreate,
         MedicalRuleUpdate,
         MedicalRuleRead,
+        admin_only_write=True,
     ),
     CrudSpec(
         "risk_prediction",
@@ -185,16 +210,27 @@ def _raise_http_error(exc: Exception) -> None:
 
 def build_crud_router(spec: CrudSpec) -> APIRouter:
     router = APIRouter(prefix=spec.path, tags=[spec.resource])
+    guard = require_admin if spec.admin_only_write else require_write_access
 
-    def create(payload: Any, db: Session = Depends(get_db)) -> Any:  # noqa: B008
+    def create(
+        payload: Any,
+        principal: Principal = Depends(guard),  # noqa: B008
+        db: Session = Depends(get_db),  # noqa: B008
+    ) -> Any:
+        values = payload.model_dump()
+        if spec.model is Patient and principal.account_id is not None:
+            # 新建档案自动归属当前账号，避免出现无主档案。
+            values["owner_account_id"] = principal.account_id
+        ensure_patient_write_scope(db, spec.model, principal, values)
         try:
-            return CrudService(db, spec.model).create(payload)
+            return CrudService(db, spec.model).create_values(values)
         except (EntityConflictError, EntityNotFoundError) as exc:
             _raise_http_error(exc)
 
     create.__name__ = f"create_{spec.resource}"
     create.__annotations__["payload"] = spec.create_schema
     create.__annotations__["return"] = spec.read_schema
+    create.__annotations__["principal"] = Principal
     router.add_api_route(
         "",
         create,
@@ -205,14 +241,27 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
     )
 
     def list_entities(
+        principal: Principal = Depends(require_write_access),  # noqa: B008
         offset: int = Query(default=0, ge=0),  # noqa: B008
         limit: int = Query(default=100, ge=1, le=500),  # noqa: B008
         db: Session = Depends(get_db),  # noqa: B008
     ) -> Any:
-        return CrudService(db, spec.model).list(offset=offset, limit=limit)
+        if spec.model is Patient:
+            return list(
+                db.scalars(
+                    scope_patient_statement(select(Patient), principal)
+                    .order_by(Patient.created_at.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            )
+        return CrudService(db, spec.model).list(
+            offset=offset, limit=limit, scope=(spec.model, principal)
+        )
 
     list_entities.__name__ = f"list_{spec.resource}"
     list_entities.__annotations__["return"] = list[spec.read_schema]  # type: ignore[valid-type]
+    list_entities.__annotations__["principal"] = Principal
     router.add_api_route(
         "",
         list_entities,
@@ -221,7 +270,15 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
         operation_id=f"list_{spec.resource}",
     )
 
-    def get_entity(entity_id: str, db: Session = Depends(get_db)) -> Any:  # noqa: B008
+    def get_entity(
+        entity_id: str,
+        principal: Principal = Depends(require_write_access),  # noqa: B008
+        db: Session = Depends(get_db),  # noqa: B008
+    ) -> Any:
+        if spec.model is Patient:
+            return ensure_patient_access(db, principal, entity_id)
+        if is_patient_scoped(spec.model):
+            return get_visible_entity(db, spec.model, principal, entity_id)
         try:
             return CrudService(db, spec.model).get(entity_id)
         except (EntityConflictError, EntityNotFoundError) as exc:
@@ -229,6 +286,7 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
 
     get_entity.__name__ = f"get_{spec.resource}"
     get_entity.__annotations__["return"] = spec.read_schema
+    get_entity.__annotations__["principal"] = Principal
     router.add_api_route(
         "/{entity_id}",
         get_entity,
@@ -240,8 +298,13 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
     def update_entity(
         entity_id: str,
         payload: Any,
+        principal: Principal = Depends(guard),  # noqa: B008
         db: Session = Depends(get_db),  # noqa: B008
     ) -> Any:
+        if spec.model is Patient:
+            ensure_patient_access(db, principal, entity_id)
+        if is_patient_scoped(spec.model):
+            get_visible_entity(db, spec.model, principal, entity_id)
         try:
             return CrudService(db, spec.model).update(entity_id, payload)
         except (EntityConflictError, EntityNotFoundError) as exc:
@@ -250,6 +313,7 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
     update_entity.__name__ = f"update_{spec.resource}"
     update_entity.__annotations__["payload"] = spec.update_schema
     update_entity.__annotations__["return"] = spec.read_schema
+    update_entity.__annotations__["principal"] = Principal
     router.add_api_route(
         "/{entity_id}",
         update_entity,
@@ -258,7 +322,15 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
         operation_id=f"update_{spec.resource}",
     )
 
-    def delete_entity(entity_id: str, db: Session = Depends(get_db)) -> Response:  # noqa: B008
+    def delete_entity(
+        entity_id: str,
+        principal: Principal = Depends(guard),  # noqa: B008
+        db: Session = Depends(get_db),  # noqa: B008
+    ) -> Response:
+        if spec.model is Patient:
+            ensure_patient_access(db, principal, entity_id)
+        if is_patient_scoped(spec.model):
+            get_visible_entity(db, spec.model, principal, entity_id)
         try:
             CrudService(db, spec.model).delete(entity_id)
         except (EntityConflictError, EntityNotFoundError) as exc:
@@ -266,6 +338,7 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     delete_entity.__name__ = f"delete_{spec.resource}"
+    delete_entity.__annotations__["principal"] = Principal
     router.add_api_route(
         "/{entity_id}",
         delete_entity,
