@@ -1,5 +1,12 @@
 # 比赛版：体检资料智能导入
 
+> 状态说明（2026-09-21）：本文档描述**旧版一次性导入流程**（提取 → 核对 → 确认 →
+> 评估），该流程已实现并保留。新增的**对话式档案管理（AI-T01–AI-T08）**在其之上提供
+> 缺项追问、历年报告添加、记录修改/删除/撤销、档案版本与规划联动，接口契约见
+> [CONVERSATIONAL_IMPORT_CONTRACT.md](CONVERSATIONAL_IMPORT_CONTRACT.md)。
+> 后端已实现并有自动化测试；与前端页面（陈子正）的联合验收、真实本地模型记录仍待完成。
+> 旧版 `smart-import/extract`、`smart-import/confirm` 接口未改动，原有测试保持通过。
+
 本功能用本地 Qwen3-VL 提取资料，不训练新模型，不替代 PREVENT 计算或推荐规则。
 默认 `qwen3-vl:4b-instruct`（Ollama Q4_K_M，约 3.3 GB 下载），适合先在本机测试。
 请保留 `-instruct` 后缀：本次实测默认 `:4b` 使用 Thinking 模板，结构化输出不兼容。
@@ -73,6 +80,22 @@
 使用仓库内明确标注的人工资料及程序生成的图片/PDF，结果写入忽略目录 `.runtime`。
 页面体验可上传 [人工演示资料](examples/smart-import-demo.txt)，资料来源请选择“人工构造示例”。
 样例日期固定为 2026-09-20，后续过期时请更新演示日期并核对年龄。
+
+## 对话式档案管理（新版，后端已完成）
+
+- 端点前缀 `/api/v1/prevention/conversation`，契约与字段见
+  [CONVERSATIONAL_IMPORT_CONTRACT.md](CONVERSATIONAL_IMPORT_CONTRACT.md)。
+- 数据库迁移：`alembic upgrade head`（新增 `profiles`、`profile_drafts`、
+  `conversation_sessions`、`conversation_messages`、`pending_actions`、`action_logs`、
+  `archive_snapshots` 七张表，不改动旧表）。
+- 后端自动化测试：`cd backend && python -m pytest tests/conversation -q`
+  （模型输出用替身模拟；不把模拟输出称为真实模型测试）。
+- 真实本地模型工程冒烟（需先按上文启动 Ollama 与模型）：
+  `.venv/Scripts/python.exe scripts/smoke_conversation.py`，使用
+  `docs/examples/conversational-import-demo-2025.txt` 与 `…-2026.txt`
+  两份人工构造资料，输出模型名称、每步耗时、追问与数据库变化到
+  `.runtime/conversation-smoke.json`。该记录是工程冒烟，不是识别准确率或临床验证。
+- 未完成/未验证：与前端页面的联合验收；真实报告识别准确率；公网部署与账号体系。
 
 ## 本机实测（2026-09-20）
 
