@@ -48,7 +48,7 @@ class RapidOcrAdapter:
         if self._engine is not None or self._import_error is not None:
             return self._engine
         try:
-            from rapidocr_onnxruntime import RapidOCR  # noqa: 延迟导入
+            from rapidocr_onnxruntime import RapidOCR  # noqa: F401  # 延迟导入
         except ImportError as exc:
             self._import_error = str(exc)
             return None
