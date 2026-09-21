@@ -1,7 +1,14 @@
 from app.models import Base, Patient
 
 EXPECTED_TABLES = {
+    "action_logs",
+    "archive_snapshots",
+    "conversation_messages",
+    "conversation_sessions",
+    "pending_actions",
     "prevention_reports",
+    "profile_drafts",
+    "profiles",
     "ai_reports",
     "exam_histories",
     "exam_item_prices",
