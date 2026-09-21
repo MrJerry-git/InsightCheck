@@ -44,6 +44,20 @@ outputs/
 *.pkl
 *.joblib
 
+# Builtin dictionary/catalog/rule/terminology data files (non-sensitive, must be committed).
+# The generic `data/` rule above only excludes real local datasets; these precise exceptions
+# keep the small builtin JSON payloads that the H-series services load at runtime tracked.
+!backend/app/exam_dictionary/data/
+!backend/app/exam_dictionary/data/**
+!backend/app/features/lesion/data/
+!backend/app/features/lesion/data/**
+!backend/app/jiuhua_prep/data/
+!backend/app/jiuhua_prep/data/**
+!backend/app/report_extraction/data/
+!backend/app/report_extraction/data/**
+!backend/app/rule_candidates/data/
+!backend/app/rule_candidates/data/**
+
 # Editors and operating systems
 .idea/
 .vscode/
