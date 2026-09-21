@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from app.exam_dictionary.schemas import (
@@ -67,12 +68,22 @@ def _parse_reference_range(raw: dict, where: str, errors: list[str]) -> Referenc
     max_value = raw.get("max_value")
     if min_value is None and max_value is None:
         errors.append(f"{where}: min_value 与 max_value 不能同时缺省")
-    if not isinstance(min_value, (int, float, type(None))):
-        errors.append(f"{where}: min_value 必须是数字或 null")
-        min_value = None
-    if not isinstance(max_value, (int, float, type(None))):
-        errors.append(f"{where}: max_value 必须是数字或 null")
-        max_value = None
+    if min_value is not None:
+        if not isinstance(min_value, (int, float)) or isinstance(min_value, bool):
+            errors.append(f"{where}: min_value 必须是有限数字或 null")
+            min_value = None
+        elif not math.isfinite(float(min_value)):
+            errors.append(f"{where}: min_value 必须是有限数字")
+            min_value = None
+    if max_value is not None:
+        if not isinstance(max_value, (int, float)) or isinstance(max_value, bool):
+            errors.append(f"{where}: max_value 必须是有限数字或 null")
+            max_value = None
+        elif not math.isfinite(float(max_value)):
+            errors.append(f"{where}: max_value 必须是有限数字")
+            max_value = None
+    if min_value is not None and max_value is not None and min_value > max_value:
+        errors.append(f"{where}: min_value 不能大于 max_value")
     review_status = raw.get("review_status", "pending_review")
     if review_status not in REVIEW_STATUSES:
         errors.append(f"{where}: 非法 review_status {review_status!r}")
