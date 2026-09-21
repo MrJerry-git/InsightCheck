@@ -12,6 +12,7 @@ from app.api.routes.plans import router as plans_router
 from app.api.routes.prevention import router as prevention_router
 from app.api.routes.recommendation_ranking import router as recommendation_ranking_router
 from app.api.routes.records import router as records_router
+from app.api.routes.reports import router as reports_router
 from app.api.routes.rule_engine import router as rule_engine_router
 from app.api.routes.smart_import import router as smart_import_router
 from app.api.routes.standardization import router as standardization_router
@@ -34,3 +35,4 @@ api_router.include_router(recommendation_ranking_router)
 api_router.include_router(rule_engine_router)
 api_router.include_router(crud_router)
 api_router.include_router(records_router)
+api_router.include_router(reports_router)
