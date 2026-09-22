@@ -117,6 +117,116 @@ def test_single_observation_degrades_gracefully() -> None:
     assert metric.comparability_reason and "仅一条" in metric.comparability_reason
 
 
+# ---- PR #21 审核 P1：缺单位不得被判为可比较 ----
+
+
+def test_missing_unit_is_not_comparable() -> None:
+    """审核复现：2024 年 6 (10*9/L)、2025 年 60 (unit=None) 曾被判 comparable/RISING。"""
+    summarizer = CrossSystemSummarizer()
+    summary = summarizer.summarize(
+        [
+            obs("6690-2", 6.0, date(2024, 6, 1), unit="10*9/L"),
+            obs("6690-2", 60.0, date(2025, 6, 1), unit=None),
+        ],
+        as_of=date(2026, 9, 20),
+    )
+    metric = summary.groups[0].numeric[0]
+    assert metric.comparability == "missing_unit"
+    assert metric.trend == "UNKNOWN", "缺单位时不能推断上升趋势"
+    assert metric.trend_reason is None
+    assert metric.comparability_reason and "缺少单位" in metric.comparability_reason
+    assert len(metric.timeline) == 2, "时间线必须保留，不能丢数据"
+    assert metric.missing_unit_refs == ["rec-6690-2-2025-06-01"]
+
+
+def test_blank_unit_is_treated_as_missing() -> None:
+    summarizer = CrossSystemSummarizer()
+    summary = summarizer.summarize(
+        [
+            obs("6690-2", 6.0, date(2024, 6, 1), unit="10*9/L"),
+            obs("6690-2", 60.0, date(2025, 6, 1), unit="   "),
+        ],
+        as_of=date(2026, 9, 20),
+    )
+    assert summary.groups[0].numeric[0].comparability == "missing_unit"
+
+
+def test_missing_unit_recorded_for_follow_up_question() -> None:
+    summarizer = CrossSystemSummarizer()
+    summary = summarizer.summarize(
+        [
+            obs("718-7", 135.0, date(2024, 1, 1), unit="g/L", name="血红蛋白"),
+            obs("718-7", 13.5, date(2025, 1, 1), unit=None, name="血红蛋白"),
+        ],
+        as_of=date(2026, 9, 20),
+    )
+    assert len(summary.missing_units) == 1
+    item = summary.missing_units[0]
+    assert item.metric_code == "718-7"
+    assert item.record_refs == ("rec-718-7-2025-01-01",)
+    assert item.observed_at == (date(2025, 1, 1),)
+    assert "缺少单位" in item.question
+    assert any("缺少单位" in note for note in summary.notes)
+    payload = summary.as_dict()
+    assert payload["missing_units"][0]["record_refs"] == ["rec-718-7-2025-01-01"]
+
+
+def test_h03_unit_missing_entry_does_not_create_trend() -> None:
+    """H03→H05 跨模块：H03 标 unit_missing 的条目不得被传播成趋势或异常。"""
+
+    def from_parsed_h03(parsed: dict, observed: date) -> Observation:
+        """T03 入库前按 H03 契约构造观测：不可比较状态不生成 canonical_value。"""
+        non_comparable = parsed["status"] in ("unit_missing", "unit_unconverted", "invalid_value")
+        return Observation(
+            metric_code="6690-2",
+            display_name="白细胞计数",
+            value_type="numeric",
+            observed_at=observed,
+            record_ref=f"parsed-{observed.isoformat()}",
+            category="blood_routine",
+            system="hematology",
+            raw_value=parsed["raw_value"],
+            canonical_value=None if non_comparable else parsed["canonical_value"],
+            unit=parsed["canonical_unit"],
+        )
+
+    summary = CrossSystemSummarizer().summarize(
+        [
+            from_parsed_h03(
+                {"status": "mapped", "canonical_value": 6.0, "canonical_unit": "10*9/L",
+                 "raw_value": "6.0"},
+                date(2024, 6, 1),
+            ),
+            from_parsed_h03(
+                {"status": "unit_missing", "canonical_value": None, "canonical_unit": None,
+                 "raw_value": "60"},
+                date(2025, 6, 1),
+            ),
+        ],
+        as_of=date(2026, 9, 20),
+    )
+    metric = summary.groups[0].numeric[0]
+    assert metric.comparability == "single_observation"
+    assert metric.trend == "UNKNOWN"
+    assert len(metric.timeline) == 1, "缺单位条目不能进入可比较时间线"
+    assert summary.abnormalities == []
+
+
+def test_confirmed_units_remain_comparable() -> None:
+    summarizer = CrossSystemSummarizer()
+    summary = summarizer.summarize(
+        [
+            obs("6690-2", 6.0, date(2024, 6, 1), unit="10*9/L"),
+            obs("6690-2", 6.2, date(2025, 6, 1), unit="10*9/L"),
+        ],
+        as_of=date(2026, 9, 20),
+    )
+    metric = summary.groups[0].numeric[0]
+    assert metric.comparability == "comparable"
+    assert metric.missing_unit_refs == []
+    assert summary.missing_units == []
+
+
 def test_qualitative_timeline_with_expected_value() -> None:
     protein = Observation(
         metric_code="20454-5",

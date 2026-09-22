@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 VALUE_TYPES = ("numeric", "qualitative", "text")
-COMPARABILITY = ("comparable", "single_observation", "incomparable_unit")
+COMPARABILITY = ("comparable", "single_observation", "incomparable_unit", "missing_unit")
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,8 @@ class Observation:
     reference_population: str | None = None
     expected_qualitative: str | None = None
     report_flag: str | None = None
+    # 人工/上游已确认单位来源时为 True；仅用于说明，不替代单位缺失判定
+    unit_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,7 @@ class NumericMetricSummary:
     unit: str | None
     timeline: list[TimelinePoint] = field(default_factory=list)
     abnormality_count: int = 0
+    missing_unit_refs: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -80,6 +83,7 @@ class NumericMetricSummary:
             "trend_reason": self.trend_reason,
             "unit": self.unit,
             "abnormality_count": self.abnormality_count,
+            "missing_unit_refs": list(self.missing_unit_refs),
             "timeline": [
                 {
                     "observed_at": p.observed_at.isoformat(),
@@ -224,6 +228,26 @@ class SystemGroup:
         }
 
 
+@dataclass(frozen=True)
+class MissingUnitItem:
+    """缺单位登记项：保留时间线与记录引用，供对话式追问补齐（PR #21 P1）。"""
+
+    metric_code: str
+    display_name: str
+    record_refs: tuple[str, ...]
+    observed_at: tuple[date, ...]
+    question: str
+
+    def as_dict(self) -> dict:
+        return {
+            "metric_code": self.metric_code,
+            "display_name": self.display_name,
+            "record_refs": list(self.record_refs),
+            "observed_at": [d.isoformat() for d in self.observed_at],
+            "question": self.question,
+        }
+
+
 @dataclass
 class CrossSystemSummary:
     """H05 输出：多系统汇总 + 异常清单 + 显式说明。"""
@@ -234,6 +258,7 @@ class CrossSystemSummary:
     abnormalities: list[AbnormalityItem] = field(default_factory=list)
     excluded_future_count: int = 0
     excluded_record_refs: list[str] = field(default_factory=list)
+    missing_units: list[MissingUnitItem] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
@@ -244,5 +269,6 @@ class CrossSystemSummary:
             "abnormalities": [a.as_dict() for a in self.abnormalities],
             "excluded_future_count": self.excluded_future_count,
             "excluded_record_refs": list(self.excluded_record_refs),
+            "missing_units": [m.as_dict() for m in self.missing_units],
             "notes": list(self.notes),
         }

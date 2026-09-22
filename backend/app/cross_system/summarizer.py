@@ -7,6 +7,7 @@ from datetime import date
 from app.cross_system.schemas import (
     AbnormalityItem,
     CrossSystemSummary,
+    MissingUnitItem,
     NumericMetricSummary,
     Observation,
     QualitativeMetricSummary,
@@ -44,6 +45,7 @@ class CrossSystemSummarizer:
 
         groups: dict[tuple[str, str], SystemGroup] = {}
         abnormalities: list[AbnormalityItem] = []
+        missing_units: list[MissingUnitItem] = []
 
         for key in sorted({(o.category, o.system) for o in usable}):
             groups[key] = SystemGroup(category=key[0], system=key[1])
@@ -60,6 +62,12 @@ class CrossSystemSummarizer:
                 summary = self._summarize_numeric(metric_obs)
                 group.numeric.append(summary)
                 abnormalities.extend(self._numeric_abnormalities(metric_obs, summary))
+                if summary.missing_unit_refs:
+                    missing_units.append(self._missing_unit_item(metric_obs, summary))
+                    notes.append(
+                        f"{summary.display_name}：{len(summary.missing_unit_refs)} 条记录缺少单位，"
+                        "未参与趋势比较，已登记为待确认项"
+                    )
             elif first.value_type == "qualitative":
                 summary = self._summarize_qualitative(metric_obs)
                 group.qualitative.append(summary)
@@ -77,6 +85,7 @@ class CrossSystemSummarizer:
             ),
             excluded_future_count=len(future),
             excluded_record_refs=sorted(o.record_ref for o in future),
+            missing_units=missing_units,
             notes=notes,
         )
 
@@ -98,7 +107,11 @@ class CrossSystemSummarizer:
 
     def _summarize_numeric(self, metric_obs: list[Observation]) -> NumericMetricSummary:
         first = metric_obs[0]
-        units = {self._norm_unit(o.unit) for o in metric_obs if o.unit}
+        # 参与比较的观测：有可比较数值的记录。缺单位与单位不一致都必须判为
+        # 不可比较，不能因为"过滤掉 None"而把缺单位记录当成同单位（PR #21 P1）。
+        comparable_obs = [o for o in metric_obs if o.canonical_value is not None]
+        missing_unit_obs = [o for o in comparable_obs if not (o.unit or "").strip()]
+        units = {self._norm_unit(o.unit) for o in comparable_obs if (o.unit or "").strip()}
         unit_consistent = len(units) <= 1
 
         timeline = [
@@ -120,7 +133,14 @@ class CrossSystemSummarizer:
 
         comparability = "comparable"
         reason: str | None = None
-        if not unit_consistent:
+        if missing_unit_obs:
+            comparability = "missing_unit"
+            reason = (
+                f"{len(missing_unit_obs)}/{len(comparable_obs)} 条记录缺少单位，"
+                "上游未完成有依据的标准化，不做跨记录趋势比较；"
+                "需人工确认单位后重算"
+            )
+        elif not unit_consistent:
             comparability = "incomparable_unit"
             reason = "历史记录单位不一致（未登记换算依据），不做跨记录趋势比较"
         elif len(timeline) < 2:
@@ -148,6 +168,25 @@ class CrossSystemSummarizer:
             unit=first.unit,
             timeline=timeline,
             abnormality_count=sum(1 for p in timeline if p.direction in ("high", "low")),
+            missing_unit_refs=[o.record_ref for o in missing_unit_obs],
+        )
+
+    def _missing_unit_item(
+        self, metric_obs: list[Observation], summary: NumericMetricSummary
+    ) -> MissingUnitItem:
+        """缺单位登记：保留时间线与记录引用，供对话式追问补齐。"""
+        refs = set(summary.missing_unit_refs)
+        return MissingUnitItem(
+            metric_code=summary.metric_code,
+            display_name=summary.display_name,
+            record_refs=tuple(summary.missing_unit_refs),
+            observed_at=tuple(
+                o.observed_at for o in metric_obs if o.record_ref in refs
+            ),
+            question=(
+                f"{summary.display_name}（{summary.metric_code}）有 "
+                f"{len(refs)} 条记录缺少单位，请确认单位后再比较趋势"
+            ),
         )
 
     def _to_metric_observations(self, metric_obs: list[Observation]) -> list[MetricObservation]:
