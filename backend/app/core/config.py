@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     import_model_timeout: float = 240
     # T03：导入任务原始文件的临时存放目录；确认、取消或失败后清理。
     import_task_storage_dir: str = ".runtime/import-tasks"
+    # T10：可选的语言模型问答服务（OpenAI 兼容）。留空时使用结构化本地回答。
+    llm_provider: str | None = None
+    llm_model: str = "qwen2.5:7b-instruct"
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
+    llm_timeout: float = 60
     # T01：鉴权开关与账号策略。默认关闭，使本地开发与既有 1.0 流程保持匿名管理员；
     # 生产部署与联合验收前必须显式开启，否则业务接口不校验登录。
     auth_required: bool = False
