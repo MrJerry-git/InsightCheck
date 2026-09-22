@@ -26,7 +26,7 @@ from app.models.imports import ImportBatch, ImportedRecord
 from app.models.plans import Plan, PlanRevision
 from app.models.pricing import ExamItemPriceRecord
 from app.models.records import RecordRevision
-from app.models.reporting import QaRecord, ReportExport
+from app.models.reporting import QaRecord, ReportEvidenceSnapshot, ReportExport
 
 __all__ = [
     "Account",
@@ -55,6 +55,7 @@ __all__ = [
     "Recommendation",
     "QaRecord",
     "RecommendationItem",
+    "ReportEvidenceSnapshot",
     "ReportExport",
     "RecordRevision",
     "RiskPrediction",

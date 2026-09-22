@@ -6,16 +6,26 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AnalysisRun, LabMetric, MedicalRule, Patient, Plan
+from app.models import (
+    AnalysisRun,
+    LabMetric,
+    MedicalRule,
+    Patient,
+    Plan,
+    ReportEvidenceSnapshot,
+)
 from app.services.reporting.pdf import SimpleChinesePdf
 
 REPORT_VERSION = "report-v1"
+EVIDENCE_SNAPSHOT_VERSION = "report-evidence-v1"
 
 
 class ReportError(Exception):
@@ -48,7 +58,7 @@ class ReportService:
         if patient is None:
             raise ReportError("档案不存在", status_code=404)
         findings = {item["finding_code"]: item for item in (run.findings if run else [])}
-        evidence = self._evidence(snapshot, findings)
+        evidence = self._frozen_evidence(plan, revision_no, snapshot, findings)
         return {
             "report_version": REPORT_VERSION,
             "plan_id": plan.id,
@@ -90,6 +100,46 @@ class ReportService:
 
     def _revision_no(self, plan: Plan, revision_no: int | None) -> int:
         return plan.revision_no if revision_no is None else revision_no
+
+    def _frozen_evidence(
+        self,
+        plan: Plan,
+        revision_no: int | None,
+        snapshot: dict[str, Any],
+        findings: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """读取已冻结的证据快照；首次生成报告时冻结当时依据。
+
+        报告一旦生成，之后修改/删除记录或更新规则都不再改变它的依据，
+        历史问答同样读取这份快照，保证"报告与依据"版本一致。
+        """
+
+        number = self._revision_no(plan, revision_no)
+        stored = self.db.scalar(
+            select(ReportEvidenceSnapshot).where(
+                ReportEvidenceSnapshot.plan_id == plan.id,
+                ReportEvidenceSnapshot.revision_no == number,
+            )
+        )
+        if stored is not None:
+            return stored.evidence
+        payload = {
+            **self._evidence(snapshot, findings),
+            "snapshot_version": EVIDENCE_SNAPSHOT_VERSION,
+            "captured_at": datetime.now(UTC).isoformat(),
+        }
+        self.db.add(
+            ReportEvidenceSnapshot(
+                plan_id=plan.id,
+                revision_no=number,
+                evidence=payload,
+                content_sha256=sha256(
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+            )
+        )
+        self.db.commit()
+        return payload
 
     def _evidence(
         self, snapshot: dict[str, Any], findings: dict[str, dict[str, Any]]

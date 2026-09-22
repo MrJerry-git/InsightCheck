@@ -134,6 +134,18 @@ class QaService:
                 self.db.query(QaRecord).filter(QaRecord.request_id == request_id).one_or_none()
             )
             if existing is not None:
+                # 幂等键按账号 + 档案 + 问题内容限定：同一 request_id 不能把别的
+                # 账号/档案的问答回给调用方（审核 P1 的跨账号泄漏）。
+                same_scope = (
+                    existing.patient_id == patient.id
+                    and existing.created_by_account_id == actor_account_id
+                    and existing.question == text
+                )
+                if not same_scope:
+                    raise QaError(
+                        "同一 request_id 已用于其它账号、档案或问题，请更换 request_id",
+                        status_code=409,
+                    )
                 return self._serialize(existing)
 
         context, citations = self.context(patient, plan)

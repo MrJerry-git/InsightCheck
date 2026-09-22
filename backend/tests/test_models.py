@@ -24,6 +24,7 @@ EXPECTED_TABLES = {
     "patients",
     "plan_revisions",
     "qa_records",
+    "report_evidence_snapshots",
     "report_exports",
     "plans",
     "recommendation_items",

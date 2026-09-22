@@ -36,9 +36,9 @@ def login(client, username):
     return {"Authorization": f"Bearer {response.json()['token']}"}
 
 
-def prepare(db, owner):
+def prepare(db, owner, suffix=""):
     item = ExamItem(
-        code="LIVER_FUNCTION_PANEL", name="肝功能组合", category="实验室检查",
+        code=f"LIVER_FUNCTION_PANEL{suffix}", name="肝功能组合", category="实验室检查",
         cost_level=CostLevel.LOW,
     )
     db.add(item)
@@ -56,13 +56,13 @@ def prepare(db, owner):
     )
     db.add(
         MetricDictionary(
-            metric_code="ALT", canonical_name="丙氨酸氨基转移酶", aliases=[],
+            metric_code=f"ALT{suffix}", canonical_name="丙氨酸氨基转移酶", aliases=[],
             standard_unit="U/L", category="肝肾功能及生化", value_type=ValueType.NUMERIC,
             unit_conversions={}, source="目录来源", version="v1",
         )
     )
     patient = Patient(
-        anonymous_code="P-REPORT-001", gender=Gender.MALE,
+        anonymous_code=f"P-REPORT-001{suffix}", gender=Gender.MALE,
         birth_date=date(1975, 3, 1), owner_account_id=owner.id,
     )
     db.add(patient)
@@ -72,7 +72,7 @@ def prepare(db, owner):
     db.flush()
     db.add(
         LabMetric(
-            health_check_id=check.id, metric_code="ALT", original_name="ALT",
+            health_check_id=check.id, metric_code=f"ALT{suffix}", original_name="ALT",
             canonical_name="丙氨酸氨基转移酶", original_value="88", value=88.0,
             reference_min=0.0, reference_max=40.0, status=MetricStatus.HIGH,
             normalization_status="normalized", normalization_version="v1",
@@ -306,3 +306,122 @@ def test_model_answer_with_invalid_citation_falls_back(test_app, db_session, mon
         # 模型不可达 → 结构化回答，仍带可追溯引用。
         assert response.json()["provider"] == "structured-local-v1"
         assert response.json()["citations"]
+
+
+def test_qa_request_id_cannot_leak_across_accounts(test_app, db_session):
+    """审核 P1：两个账号用同一 request_id 时，第二个账号不能收到第一个档案的问答。"""
+
+    owner = make_account(db_session, "doctor-a")
+    other = make_account(db_session, "doctor-b")
+    patient_a = prepare(db_session, owner)
+    patient_b = prepare(db_session, other, suffix="-B")
+    with TestClient(test_app) as client:
+        headers_a = login(client, "doctor-a")
+        headers_b = login(client, "doctor-b")
+        _, plan_a = build_plan(client, headers_a, patient_a.id)
+        _, plan_b = build_plan(client, headers_b, patient_b.id)
+
+        first = client.post(
+            "/api/v1/qa/ask",
+            json={
+                "patient_id": patient_a.id,
+                "plan_id": plan_a["plan_id"],
+                "question": "这个方案有哪些项目？",
+                "request_id": "shared-request-id",
+            },
+            headers=headers_a,
+        )
+        assert first.status_code == 200, first.text
+
+        leak = client.post(
+            "/api/v1/qa/ask",
+            json={
+                "patient_id": patient_b.id,
+                "plan_id": plan_b["plan_id"],
+                "question": "这个方案有哪些项目？",
+                "request_id": "shared-request-id",
+            },
+            headers=headers_b,
+        )
+        assert leak.status_code == 409, leak.text
+        assert "request_id" in leak.json()["detail"]
+
+        # 同一账号重复提问仍然幂等，不重复落库。
+        again = client.post(
+            "/api/v1/qa/ask",
+            json={
+                "patient_id": patient_a.id,
+                "plan_id": plan_a["plan_id"],
+                "question": "这个方案有哪些项目？",
+                "request_id": "shared-request-id",
+            },
+            headers=headers_a,
+        )
+        assert again.status_code == 200
+        assert again.json()["qa_id"] == first.json()["qa_id"]
+        assert len(db_session.scalars(select(QaRecord)).all()) == 1
+
+
+def test_report_evidence_is_frozen_after_records_change(test_app, db_session):
+    """审核 P1：历史报告与问答的证据必须来自生成时的快照，不随当前数据变化。"""
+
+    from app.models import MedicalRule
+    from app.models.enums import RuleAction
+
+    owner = make_account(db_session, "doctor-a")
+    patient = prepare(db_session, owner)
+    item = db_session.scalar(select(ExamItem).where(ExamItem.code == "LIVER_FUNCTION_PANEL"))
+    db_session.add(
+        MedicalRule(
+            rule_code="LIVER.LONG_INTERVAL",
+            rule_type="INTERVAL",
+            exam_item_id=item.id,
+            condition_json={"minimum_months": 24},
+            action=RuleAction.ALLOW,
+            priority=10,
+            source="原规则来源（2026-01）",
+            version="v1",
+            enabled=True,
+        )
+    )
+    db_session.commit()
+
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        _, plan = build_plan(client, headers, patient.id)
+        first = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers).json()
+        first_evidence = first["evidence"]
+        assert first_evidence["records"], "报告应包含指标依据"
+        assert first_evidence["records"][0]["original_value"] == "88"
+
+        # 生成报告后修改指标数值、删除指标记录、更新规则来源。
+        metric = db_session.scalar(select(LabMetric))
+        metric.original_value = "150"
+        metric.value = 150.0
+        rule = db_session.scalar(select(MedicalRule))
+        rule.source = "被修改后的规则来源"
+        db_session.delete(metric)
+        db_session.commit()
+
+        again = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers).json()
+        assert again["evidence"]["records"] == first_evidence["records"]
+        # 规则依据同样来自快照：规则被改写后旧报告仍显示当时的来源。
+        assert again["evidence"]["rules"] == first_evidence["rules"]
+        assert again["evidence"]["snapshot_version"] == "report-evidence-v1"
+        assert again["evidence"]["captured_at"] == first_evidence["captured_at"]
+
+        # 问答使用同一份冻结证据，引用仍指向旧版依据。
+        answer = client.post(
+            "/api/v1/qa/ask",
+            json={
+                "patient_id": patient.id,
+                "plan_id": plan["plan_id"],
+                "question": "证据里的指标是多少？",
+            },
+            headers=headers,
+        )
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["citations"]
+        # 问答不会改动已冻结的报告证据。
+        after_answer = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers).json()
+        assert after_answer["evidence"]["records"] == first_evidence["records"]

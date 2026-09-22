@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CreatedAtMixin, IdMixin
@@ -49,3 +49,23 @@ class QaRecord(IdMixin, CreatedAtMixin, Base):
     created_by_account_id: Mapped[str | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class ReportEvidenceSnapshot(IdMixin, CreatedAtMixin, Base):
+    """报告证据快照：报告首次生成时冻结当时的依据。
+
+    审核 P1：历史报告与问答不能重新读取当前 LabMetric/MedicalRule，
+    否则修改或删除记录、更新规则后旧报告的依据会跟着变。
+    """
+
+    __tablename__ = "report_evidence_snapshots"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "revision_no", name="uq_report_evidence_plan_revision"),
+    )
+
+    plan_id: Mapped[str] = mapped_column(
+        ForeignKey("plans.id", ondelete="CASCADE"), index=True
+    )
+    revision_no: Mapped[int] = mapped_column(Integer)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON)
+    content_sha256: Mapped[str] = mapped_column(String(64))
