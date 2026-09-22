@@ -22,7 +22,7 @@ export function example(kind: "normal" | "prediabetes" | "diabetes" = "prediabet
 
 export function manual(): Intake {
   const base = example();
-  return { ...base, label: "", source: "manual", source_note: "",
+  return { ...base, label: "", sex: "", source: "manual", source_note: "",
     known_cvd: null, pregnant: null, symptomatic: null,
     visits: [{ date: "", age: null, sbp: null, total_c: null, hdl_c: null,
       chol_unit: "mmol/L", bmi: null, egfr: null, dm: null, smoking: null,
