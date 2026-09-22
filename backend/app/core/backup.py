@@ -11,12 +11,79 @@ import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class BackupError(Exception):
     """备份/恢复失败；消息可直接展示给运维。"""
+
+
+@lru_cache(maxsize=1)
+def _script_directory() -> ScriptDirectory:
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
+    return ScriptDirectory.from_config(config)
+
+
+def _ancestors(revision: str) -> set[str] | None:
+    """返回该 revision 及其全部祖先；未知 revision 返回 None。"""
+
+    script = _script_directory()
+    try:
+        current = script.get_revision(revision)
+    except Exception:  # 未知标识会抛 CommandError，这里统一视为无法判定
+        return None
+    if current is None:
+        return None
+    seen: set[str] = set()
+    stack = [current]
+    while stack:
+        node = stack.pop()
+        if node.revision in seen:
+            continue
+        seen.add(node.revision)
+        downs = node.down_revision
+        for down in (downs,) if isinstance(downs, str) else (downs or ()):
+            try:
+                child = script.get_revision(down)
+            except Exception:
+                return None
+            if child is not None:
+                stack.append(child)
+    return seen
+
+
+def compare_revisions(current: str | None, archived: str | None) -> str:
+    """按 Alembic 版本图比较两个版本，而不是按字符串大小。
+
+    返回 ``same`` / ``archived_older`` / ``archived_newer`` / ``diverged`` / ``unknown``。
+    revision 标识不是按时间排序的字符串，字符串比较会把旧备份当成新版本。
+    """
+
+    if current is None and archived is None:
+        return "same"
+    if current is None or archived is None:
+        return "unknown"
+    if current == archived:
+        return "same"
+    current_ancestors = _ancestors(current)
+    archived_ancestors = _ancestors(archived)
+    if current_ancestors is None or archived_ancestors is None:
+        return "unknown"
+    if archived in current_ancestors:
+        # 备份版本是当前版本的祖先：恢复会退回旧库结构，必须显式确认。
+        return "archived_older"
+    if current in archived_ancestors:
+        # 备份版本比当前库更新：允许恢复（升级方向）。
+        return "archived_newer"
+    return "diverged"
 
 
 @dataclass(frozen=True)
@@ -110,11 +177,22 @@ def restore_backup(
         raise BackupError("目标数据库已存在；确认覆盖请显式使用 force")
     archived_revision = current_revision(archive)
     current = current_revision(target) if target.exists() else None
-    if current is not None and archived_revision is not None and current > archived_revision:
-        raise BackupError(
-            f"备份版本 {archived_revision} 早于当前数据库 {current}，"
-            "请先确认迁移策略后再恢复"
-        )
+    if target.exists() and current is not None:
+        if archived_revision is None:
+            raise BackupError("备份未记录 Alembic 版本，无法确认与当前数据库的先后关系")
+        relation = compare_revisions(current, archived_revision)
+        if relation in {"archived_older", "diverged", "unknown"}:
+            reasons = {
+                "archived_older": f"备份版本 {archived_revision} 早于当前数据库 {current}",
+                "diverged": (
+                    f"备份版本 {archived_revision} 与当前数据库 {current} 不在同一条迁移链上"
+                ),
+                "unknown": (
+                    f"无法在迁移图中确认备份版本 {archived_revision} 与当前数据库 "
+                    f"{current} 的先后关系"
+                ),
+            }
+            raise BackupError(f"{reasons[relation]}，请先确认迁移策略后再恢复")
     safety_path = None
     if target.exists() and safety_copy:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
