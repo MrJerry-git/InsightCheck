@@ -386,3 +386,82 @@ def test_plan_rejects_stale_analysis(test_app, db_session):
             headers=headers,
         )
         assert plan.status_code == 201
+
+
+def test_edit_reevaluates_rules_after_admin_adds_blocking_rule(test_app, db_session):
+    """T08/T07 跨任务回归：分析后新增禁止规则，编辑方案时必须重评并剔除。
+
+    审核 P1 复现路径：分析完成 → 管理员新增/启用禁止规则 → 已有候选编辑复算，
+    旧实现会沿用分析时的 rule_status，把已被禁止的项目继续留在方案里。
+    """
+
+    from app.models import MedicalRule
+    from app.models.enums import RuleAction
+
+    _, patient = prepare(db_session)
+    exam_item = db_session.scalar(select(ExamItem).where(ExamItem.code == "LIVER_FUNCTION_PANEL"))
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        run = create_run(client, headers, patient.id)
+        liver = [item for item in run["candidates"] if item["code"] == "LIVER_FUNCTION_PANEL"]
+        assert liver and liver[0]["rule_status"] != "BLOCKED"
+
+        plan = client.post(
+            "/api/v1/plans",
+            json={"patient_id": patient.id, "analysis_run_id": run["run_id"]},
+            headers=headers,
+        ).json()
+        before_codes = {item["code"] for tier in plan["tiers"] for item in tier["items"]}
+        assert "LIVER_FUNCTION_PANEL" in before_codes
+
+        # 管理员在分析之后新增禁止规则（T08 职责，此处直接写入规则表）。
+        db_session.add(
+            MedicalRule(
+                rule_code="NO_LIVER_PANEL_AFTER_REVIEW",
+                rule_type="GENDER",
+                exam_item_id=exam_item.id,
+                condition_json={"allowed_genders": ["female"]},
+                action=RuleAction.BLOCK,
+                priority=0,
+                source="测试审核结论",
+                version="v2",
+                enabled=True,
+            )
+        )
+        db_session.commit()
+
+        edited = client.patch(
+            f"/api/v1/plans/{plan['plan_id']}",
+            json={"reason": "按最新规则复核"},
+            headers=headers,
+        )
+        assert edited.status_code == 200, edited.text
+        body = edited.json()
+        after_codes = {item["code"] for tier in body["tiers"] for item in tier["items"]}
+        assert "LIVER_FUNCTION_PANEL" not in after_codes
+        # 结论可追踪：被剔除的项目在各档位里都带禁止原因，并标注本次命中的规则版本。
+        excluded = {
+            item["code"]: item for tier in body["tiers"] for item in tier["excluded"]
+        }
+        assert "LIVER_FUNCTION_PANEL" in excluded
+        liver_exclusion = excluded["LIVER_FUNCTION_PANEL"]
+        assert liver_exclusion["reason_code"] in {"rule_blocked", "rule_deferred"}
+        assert any(
+            "禁止" in tier.get("budget_note", "") or "禁止" in item.get("reason", "")
+            for tier in body["tiers"]
+            for item in tier["excluded"]
+            if item["code"] == "LIVER_FUNCTION_PANEL"
+        )
+        # 旧修订保持不变，仍可按原结论回看。
+        revisions = db_session.scalars(
+            select(PlanRevision).where(PlanRevision.plan_id == plan["plan_id"]).order_by(
+                PlanRevision.revision_no
+            )
+        ).all()
+        assert len(revisions) == 2
+        first = revisions[0].snapshot
+        assert "LIVER_FUNCTION_PANEL" in {
+            item["code"] for tier in first["tiers_result"] for item in tier["items"]
+        }
+        # 新修订记录本轮复算实际命中的规则版本（v2），便于回溯规则变化。
+        assert "v2" in revisions[1].snapshot["rule_set_versions"]

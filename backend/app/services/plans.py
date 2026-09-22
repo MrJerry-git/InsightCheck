@@ -30,6 +30,7 @@ from app.schemas.plan_builder import (
     PlanBuildRequest,
     PlanCandidate,
 )
+from app.services.analysis.finding_map import load_finding_map
 from app.services.analysis.runner import AnalysisRunner, input_fingerprint
 from app.services.medical_rule_service import MedicalRuleEngineService
 from app.services.plan_builder import PlanBuilder
@@ -143,7 +144,15 @@ class PlanService:
         return plan
 
     def _is_stale(self, patient: Patient, run: AnalysisRun) -> bool:
-        return input_fingerprint(self.db, patient, run.as_of_date) != run.input_fingerprint
+        return (
+            input_fingerprint(
+                self.db,
+                patient,
+                run.as_of_date,
+                finding_map_version=load_finding_map().version,
+            )
+            != run.input_fingerprint
+        )
 
     # ---- 编辑 -------------------------------------------------------------
     def edit(
@@ -175,6 +184,12 @@ class PlanService:
         removed_codes = {code.strip().upper() for code in (remove_exam_codes or [])}
         added_codes = {code.strip().upper() for code in (add_exam_codes or [])}
 
+        # 每次编辑都按当前规则版本重评全部候选：分析之后管理员新增/启用的禁止或暂缓
+        # 规则必须在本轮生效，不能沿用旧 rule_status（审核 P1）。
+        candidates = {
+            item_id: self._refresh_candidate(run, patient, candidate)
+            for item_id, candidate in candidates.items()
+        }
         for code in removed_codes:
             item = self._item_by_code(code)
             exclusion_state[item.id] = {"code": item.code, "reason": f"人工排除：{reason}"}
@@ -221,8 +236,44 @@ class PlanService:
             raise PlanError(f"项目目录中没有编码 {code}", status_code=404)
         return item
 
+    def _refresh_candidate(
+        self, run: AnalysisRun, patient: Patient, candidate: dict[str, Any]
+    ) -> dict[str, Any]:
+        """按当前规则重算候选结论，保留分析阶段给出的发现来源与证据。"""
+
+        item = self.db.get(ExamItem, candidate["exam_item_id"])
+        if item is None:
+            return candidate
+        fresh = self._evaluate_item(run, patient, item, raise_on_forbidden=False)
+        merged = dict(candidate)
+        for key in (
+            "rule_status",
+            "decision",
+            "rule_set_versions",
+            "rule_trace",
+            "conflicts",
+            "model_status",
+        ):
+            merged[key] = fresh[key]
+        if fresh["rule_status"] in {
+            CandidateRuleStatus.BLOCKED.value,
+            CandidateRuleStatus.DEFERRED.value,
+        }:
+            # 规则变化把原候选变为禁止：明确标为剔除，并说明原因，不能继续计入预算。
+            merged["decision"] = "exclude"
+            merged["missing_information"] = [
+                *candidate.get("missing_information", []),
+                "本轮复算命中禁止或暂缓规则，已从方案中剔除，请重新分析后再确认",
+            ]
+        return merged
+
     def _evaluate_item(
-        self, run: AnalysisRun, patient: Patient, item: ExamItem
+        self,
+        run: AnalysisRun,
+        patient: Patient,
+        item: ExamItem,
+        *,
+        raise_on_forbidden: bool = True,
     ) -> dict[str, Any]:
         runner = AnalysisRunner(self.db)
         context = runner._patient_context(patient, run.as_of_date)  # noqa: SLF001
@@ -277,7 +328,7 @@ class PlanService:
             )
         )
         status = CandidateRuleStatus.from_rule_evaluation(evaluation)
-        if status.forbids_selection:
+        if status.forbids_selection and raise_on_forbidden:
             raise PlanError(
                 f"项目 {item.code} 命中禁止或暂缓规则，不能人工加入方案", status_code=409
             )
@@ -292,7 +343,11 @@ class PlanService:
             "model_status": "未评估：尚无经验证的适用模型",
             "rule_status": status.value,
             "decision": (
-                "include" if status is CandidateRuleStatus.ALLOWED else "require_review"
+                "exclude"
+                if status.forbids_selection
+                else "include"
+                if status is CandidateRuleStatus.ALLOWED
+                else "require_review"
             ),
             "sources": [],
             "system": item.category,
