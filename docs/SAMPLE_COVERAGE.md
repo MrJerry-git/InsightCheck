@@ -118,18 +118,20 @@
 
 ```
 $ python -m pytest tests -q
-439 passed, 4 skipped in 25.42s
+442 passed, 5 skipped in 23.58s
 ```
 
 子系统：
 
 | 目录/文件 | 结果 |
 | --- | --- |
-| `tests/integration_h12/`（合计） | **57 passed, 1 skipped** |
+| `tests/integration_h12/`（合计） | **60 passed, 2 skipped** |
 | ├─ `test_sample_chain.py` | 10 passed |
 | ├─ `test_full_chain.py` | 14 passed |
-| └─ `test_service_contracts.py` | 33 passed, 1 skipped |
+| └─ `test_service_contracts.py` | 36 passed, 2 skipped |
 | `tests/exam_dictionary/` | 29 passed（含已吸收的 `aa2062be` 参考区间边界回归） |
+
+2 处 skip 均为**显式标注的分支差异**（H06 `SECTION_KEYS` 待 #23、T05 临时映射待 #33），不是被跳过的失败。
 
 ### 契约一致性检查结果
 
@@ -144,3 +146,29 @@ $ python -m pytest tests -q
 - **本分支未合并项**：H06 的 `SECTION_KEYS` 由 PR #23 修复（`565d45b`）引入，本分支为未合并状态，测试**显式 skip 并标注来源**，不假装通过。
 
 > 契约文档与实现的这些措辞差异属**文档待更新**，将在 #23 合并后随 H12 重新合并 main 时一并修订。
+
+### H02 ↔ H01 跨域编码对照（T05 分析编排联调）
+
+对 T 系列在途 PR 逐一核对后发现的**真实跨域缺口**（非猜测，已在本分支用测试固化）：
+
+T05（PR #33 `feat/analysis-runs`）新增 `backend/app/data/analysis_finding_map.json`。该文件在自己的 `scope_note` 里写明「**H02 目录接入后由该目录替换本文件**」——即它自认是临时替身，这没问题；但它用 `exam_codes` 引用的是**工程占位码**，而 H01 字典用的是登记编码，两者不同名：
+
+| T05 占位码 | 在 H01 字典是否存在 | H01 字典中的对应登记项 |
+| --- | --- | --- |
+| `CHEST_CT` | ❌ 不存在 | `IC:EX-CT-CHEST-LOWDOSE`（低剂量胸部CT）、`IC:EX-DR-CHEST`（胸部正位摄影） |
+| `LIPID_PANEL` | ❌ 不存在 | `2093-3` 总胆固醇、`2571-8` 甘油三酯、`2085-9` HDL-C、`13457-7` LDL-C |
+| `LIVER_FUNCTION_PANEL` | ❌ 不存在 | `1742-6` ALT、`1920-8` AST、`1975-2` 总胆红素、`1751-7` 白蛋白、`6768-6` 碱性磷酸酶 |
+| `URINE_ROUTINE` | ❌ 不存在 | `IC:M-URINE-MICROSCOPY`（尿沉渣镜检）、`IC:M-URINE-OCCULT-BLOOD`（尿潜血定性） |
+
+即：T05 的占位映射若不经对照直接喂给 H01 字典，`lookup_by_code` 会**全部返回 `None`**（已实测），候选检查项目无法解析。这正是 H12「服务联调」应当拦下的问题。
+
+本分支新增 4 条断言固化该对照（`test_service_contracts.py`）：
+
+| 断言 | 作用 |
+| --- | --- |
+| `test_h02_content_validates_against_h01_dictionary` | H02 自身 37 条关联的 `exam_code` 与 H01 字典自洽（`validate_against` 返回 `[]`） |
+| `test_h01_dictionary_fails_loudly_on_unregistered_exam_code` | 字典对占位码返回 `None`——**不凭空生成检查项目**，与 T05 自己的承诺一致 |
+| `test_h02_crosswalk_targets_are_registered_in_h01` | 上表每个登记码真实存在且有显示名，防止对照表本身写错 |
+| `test_t05_interim_finding_map_codes_are_all_crosswalked` | #33 合并后自动校验其 `exam_codes` 是否已全部对照；未合并时**显式 skip 并写明原因** |
+
+**结论与归属**：不需要改 T05 的代码即可继续——上表即为 T05 切换到 H02 目录时可直接采用的对照。已按团队约定（规则/内容由王宏锦提出、落地由王天一执行）在 PR #29 记录并请张家睿裁决归属，不在 H12 分支代为修改 `app/data/` 下的 T 系列文件。

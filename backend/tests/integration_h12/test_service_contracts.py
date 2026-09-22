@@ -444,3 +444,85 @@ def test_content_loaders_are_repeatable() -> None:
     first_assoc = [a.association_id for a in load_builtin_associations().associations_for_exam(first_exam)]
     second_assoc = [a.association_id for a in load_builtin_associations().associations_for_exam(first_exam)]
     assert first_assoc == second_assoc
+
+
+# ==================== H02 ↔ H01 跨域对照（T05 分析编排联调） ====================
+#
+# 背景：T05 的 `backend/app/data/analysis_finding_map.json`（PR #33）在 scope_note 中
+# 自述「H02 目录接入后由该目录替换本文件」，其 `exam_codes` 用的是**工程占位码**
+# （如 `CHEST_CT`），与 H01 字典的登记编码（如 `IC:EX-CT-CHEST-LOWDOSE`）并不同名。
+# 这段把对照关系固化成可执行断言，供 T05 切换到 H02 目录时直接使用：
+#   1) H02 自身内容必须与 H01 字典自洽（`validate_against` 返回空）；
+#   2) 字典对未登记编码必须"响亮失败"（返回 None），不得凭空生成检查项目；
+#   3) 对照表本身必须指向真实存在的字典登记项。
+
+# 占位码 → H01 字典登记码。改动此表前请先跑 test_h02_crosswalk_targets_are_registered_in_h01。
+_H02_X_H01_CROSSWALK: dict[str, tuple[str, ...]] = {
+    "CHEST_CT": ("IC:EX-CT-CHEST-LOWDOSE", "IC:EX-DR-CHEST"),
+    "LIPID_PANEL": ("2093-3", "2571-8", "2085-9", "13457-7"),
+    "LIVER_FUNCTION_PANEL": ("1742-6", "1920-8", "1975-2", "1751-7", "6768-6"),
+    "URINE_ROUTINE": ("IC:M-URINE-MICROSCOPY", "IC:M-URINE-OCCULT-BLOOD"),
+}
+
+
+def test_h02_content_validates_against_h01_dictionary() -> None:
+    """H02 关联内容里的 exam_code 必须全部已在 H01 字典登记。"""
+    from app.exam_dictionary import ExamDictionary, FindingCatalog
+
+    problems = FindingCatalog.load_builtin().validate_against(ExamDictionary.load_builtin())
+    assert problems == [], f"H02 关联存在未登记的检查编码：{problems}"
+
+
+def test_h01_dictionary_fails_loudly_on_unregistered_exam_code() -> None:
+    """字典对未登记编码必须返回 None，不得凭空生成检查项目。
+
+    这几个占位码正是 T05 临时映射用的；它们**不应**是 H01 的登记编码。
+    若将来真的登记进 H01，请同步更新 `_H02_X_H01_CROSSWALK` 并撤掉本用例。
+    """
+    from app.exam_dictionary import ExamDictionary
+
+    dictionary = ExamDictionary.load_builtin()
+    for code in _H02_X_H01_CROSSWALK:
+        assert dictionary.lookup_by_code(code) is None, (
+            f"{code} 已是 H01 登记编码，请更新对照表 `_H02_X_H01_CROSSWALK`"
+        )
+
+
+def test_h02_crosswalk_targets_are_registered_in_h01() -> None:
+    """对照表里每个字典登记码都必须真实存在，防止对照表本身写错。"""
+    from app.exam_dictionary import ExamDictionary
+
+    dictionary = ExamDictionary.load_builtin()
+    for placeholder, targets in _H02_X_H01_CROSSWALK.items():
+        assert targets, f"{placeholder} 的对照目标为空"
+        for code in targets:
+            entry = dictionary.lookup_by_code(code)
+            assert entry is not None, f"{placeholder} 对照到未登记编码 {code}"
+            assert entry.display_name, f"{code} 缺少显示名，无法在页面展示"
+
+
+def test_t05_interim_finding_map_codes_are_all_crosswalked(tmp_path) -> None:
+    """T05 占位映射文件若已合并，其 exam_codes 必须全部落在对照表内。
+
+    PR #33 未合并时跳过并写明原因，不假装通过。
+    """
+    import json
+    import pathlib as _pathlib
+
+    from app.exam_dictionary import ExamDictionary
+
+    repo_map = _pathlib.Path("app/data/analysis_finding_map.json")
+    if not repo_map.is_file():
+        pytest.skip(
+            "T05 的 app/data/analysis_finding_map.json 尚未合并（PR #33）；"
+            "合并后本用例会校验其 exam_codes 是否已对照进 H01 字典"
+        )
+    payload = json.loads(repo_map.read_text(encoding="utf-8"))
+    dictionary = ExamDictionary.load_builtin()
+    unmapped = [
+        (entry.get("finding_code"), code)
+        for entry in payload.get("entries", [])
+        for code in entry.get("exam_codes", [])
+        if dictionary.lookup_by_code(code) is None and code not in _H02_X_H01_CROSSWALK
+    ]
+    assert unmapped == [], f"占位映射存在未对照编码：{unmapped}"
