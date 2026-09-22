@@ -1,0 +1,1560 @@
+{
+  "dictionary_version": "exam-dictionary-v1",
+  "generated_at": "2026-09-20",
+  "maintainer": "王宏锦（WHJ-2007），任务 H01",
+  "scope_note": "首批工程覆盖目录，不是推荐每个人做全部项目的套餐，也不是已经完成医学审定的项目表。所有条目 review_status=pending_review，未经医学审核。IC:* 为内部编码，待与 LOINC/本机构编码核验后替换或映射。",
+  "entries": [
+    {
+      "code": "8302-2",
+      "entry_kind": "metric",
+      "display_name": "身高",
+      "aliases": ["Height", "height"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "numeric",
+      "standard_unit": "cm",
+      "unit_conversions": [
+        {"from_unit": "cm", "to_unit": "m", "factor": 0.01, "offset": 0.0, "basis": "1 m = 100 cm"}
+      ],
+      "reference_ranges": [],
+      "reference_note": "身高无通用异常判定区间，仅做记录与 BMI 计算输入",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "29463-7",
+      "entry_kind": "metric",
+      "display_name": "体重",
+      "aliases": ["Weight", "weight"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "numeric",
+      "standard_unit": "kg",
+      "reference_ranges": [],
+      "reference_note": "体重无通用异常判定区间，仅做记录与 BMI 计算输入",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "39156-5",
+      "entry_kind": "metric",
+      "display_name": "体质指数",
+      "aliases": ["BMI", "体重指数", "Body Mass Index"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "numeric",
+      "standard_unit": "kg/m2",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 18.5,
+          "max_value": 23.9,
+          "unit": "kg/m2",
+          "source": "中国成人超重和肥胖症预防控制指南",
+          "source_version": "2006",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "24.0-27.9 为超重、≥28.0 为肥胖（中国成人标准，与 WHO 切点不同）",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "8480-6",
+      "entry_kind": "metric",
+      "display_name": "收缩压",
+      "aliases": ["Systolic Blood Pressure", "高压", "SBP"],
+      "category": "basic_info",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "mmHg",
+      "reference_ranges": [
+        {
+          "population": "成人（正常血压）",
+          "min_value": 90,
+          "max_value": 119,
+          "unit": "mmHg",
+          "source": "中国高血压防治指南（2018年修订版）",
+          "source_version": "2018",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人（正常高值）",
+          "min_value": 120,
+          "max_value": 139,
+          "unit": "mmHg",
+          "source": "中国高血压防治指南（2018年修订版）",
+          "source_version": "2018",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "≥140 mmHg（诊室血压）为高血压诊断切点之一，诊断需非同日多次测量确认",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "8462-4",
+      "entry_kind": "metric",
+      "display_name": "舒张压",
+      "aliases": ["Diastolic Blood Pressure", "低压", "DBP"],
+      "category": "basic_info",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "mmHg",
+      "reference_ranges": [
+        {
+          "population": "成人（正常血压）",
+          "min_value": 60,
+          "max_value": 79,
+          "unit": "mmHg",
+          "source": "中国高血压防治指南（2018年修订版）",
+          "source_version": "2018",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人（正常高值）",
+          "min_value": 80,
+          "max_value": 89,
+          "unit": "mmHg",
+          "source": "中国高血压防治指南（2018年修订版）",
+          "source_version": "2018",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "≥90 mmHg（诊室血压）为高血压诊断切点之一，诊断需非同日多次测量确认",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "8867-4",
+      "entry_kind": "metric",
+      "display_name": "心率",
+      "aliases": ["静息心率", "脉搏", "Heart rate", "Pulse"],
+      "category": "basic_info",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "次/分",
+      "reference_ranges": [
+        {
+          "population": "成人（安静状态）",
+          "min_value": 60,
+          "max_value": 100,
+          "unit": "次/分",
+          "source": "人卫《诊断学》通用临床参考",
+          "source_version": "第9版",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "8310-5",
+      "entry_kind": "metric",
+      "display_name": "体温",
+      "aliases": ["Body temperature", "耳温", "腋温"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "numeric",
+      "standard_unit": "℃",
+      "reference_ranges": [
+        {
+          "population": "成人（腋温）",
+          "min_value": 36.0,
+          "max_value": 37.2,
+          "unit": "℃",
+          "source": "人卫《诊断学》通用临床参考",
+          "source_version": "第9版",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "不同测量部位（腋/口/耳/额）区间不同，导入时需核对测量部位",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "59408-5",
+      "entry_kind": "metric",
+      "display_name": "血氧饱和度",
+      "aliases": ["SpO2", "SpO₂", "氧饱和度"],
+      "category": "basic_info",
+      "system": "respiratory",
+      "value_type": "numeric",
+      "standard_unit": "%",
+      "reference_ranges": [
+        {
+          "population": "成人（海平面静息）",
+          "min_value": 95,
+          "max_value": 100,
+          "unit": "%",
+          "source": "人卫《诊断学》通用临床参考",
+          "source_version": "第9版",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-BASIC-WAIST",
+      "entry_kind": "metric",
+      "display_name": "腰围",
+      "aliases": ["Waist circumference", "腹围"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "numeric",
+      "standard_unit": "cm",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": null,
+          "max_value": 90,
+          "unit": "cm",
+          "source": "中国成人超重和肥胖症预防控制指南",
+          "source_version": "2006",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": null,
+          "max_value": 85,
+          "unit": "cm",
+          "source": "中国成人超重和肥胖症预防控制指南",
+          "source_version": "2006",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "≥90 cm（男）/≥85 cm（女）为中心性肥胖切点，是风险提示而非诊断",
+      "notes": "IC 内部编码；LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-HISTORY-PAST",
+      "entry_kind": "metric",
+      "display_name": "既往史",
+      "aliases": ["Past medical history", "病史"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-HISTORY-MEDICATION",
+      "entry_kind": "metric",
+      "display_name": "用药史",
+      "aliases": ["当前用药", "Medication history"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-HISTORY-FAMILY",
+      "entry_kind": "metric",
+      "display_name": "家族史",
+      "aliases": ["Family history"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-SYMPTOM-CURRENT",
+      "entry_kind": "metric",
+      "display_name": "现症状描述",
+      "aliases": ["症状", "主诉"],
+      "category": "basic_info",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-LIFESTYLE-SMOKING",
+      "entry_kind": "metric",
+      "display_name": "吸烟状况",
+      "aliases": ["吸烟", "Smoking status"],
+      "category": "basic_info",
+      "system": "respiratory",
+      "value_type": "qualitative",
+      "qualitative_values": ["从不吸烟", "已戒烟", "当前吸烟"],
+      "expected_qualitative": "从不吸烟",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-LIFESTYLE-ALCOHOL",
+      "entry_kind": "metric",
+      "display_name": "饮酒状况",
+      "aliases": ["饮酒", "Alcohol use"],
+      "category": "basic_info",
+      "system": "digestive",
+      "value_type": "qualitative",
+      "qualitative_values": ["从不", "偶尔", "经常"],
+      "expected_qualitative": "从不",
+      "notes": "期望值仅表示问卷默认选项，不构成医学判断",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-PE-INTERNAL",
+      "entry_kind": "metric",
+      "display_name": "内科检查结论",
+      "aliases": ["内科", "内科检查"],
+      "category": "physical_exam",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-PE-SURGERY",
+      "entry_kind": "metric",
+      "display_name": "外科检查结论",
+      "aliases": ["外科", "外科检查"],
+      "category": "physical_exam",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-PE-EENT",
+      "entry_kind": "metric",
+      "display_name": "耳鼻喉检查结论",
+      "aliases": ["耳鼻喉", "耳鼻喉科检查"],
+      "category": "physical_exam",
+      "system": "sensory",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-PE-DENTAL",
+      "entry_kind": "metric",
+      "display_name": "口腔检查结论",
+      "aliases": ["口腔", "口腔科检查"],
+      "category": "physical_exam",
+      "system": "sensory",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-OPT-VISION-L",
+      "entry_kind": "metric",
+      "display_name": "裸视力（左）",
+      "aliases": ["左眼视力", "视力左"],
+      "category": "physical_exam",
+      "system": "sensory",
+      "value_type": "numeric",
+      "standard_unit": "5分记录",
+      "reference_ranges": [],
+      "reference_note": "视力记录法（5分记录/小数记录）因机构而异，区间待登记本机构标准",
+      "notes": "IC 内部编码；LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-OPT-VISION-R",
+      "entry_kind": "metric",
+      "display_name": "裸视力（右）",
+      "aliases": ["右眼视力", "视力右"],
+      "category": "physical_exam",
+      "system": "sensory",
+      "value_type": "numeric",
+      "standard_unit": "5分记录",
+      "reference_ranges": [],
+      "reference_note": "视力记录法因机构而异，区间待登记本机构标准",
+      "notes": "IC 内部编码；LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "6690-2",
+      "entry_kind": "metric",
+      "display_name": "白细胞计数",
+      "aliases": ["WBC", "白细胞"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "10*9/L",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 3.5,
+          "max_value": 9.5,
+          "unit": "10*9/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "789-8",
+      "entry_kind": "metric",
+      "display_name": "红细胞计数",
+      "aliases": ["RBC", "红细胞"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "10*12/L",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 4.3,
+          "max_value": 5.8,
+          "unit": "10*12/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 3.8,
+          "max_value": 5.1,
+          "unit": "10*12/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "718-7",
+      "entry_kind": "metric",
+      "display_name": "血红蛋白",
+      "aliases": ["HGB", "Hb", "Hemoglobin"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "g/L",
+      "unit_conversions": [
+        {"from_unit": "g/dL", "to_unit": "g/L", "factor": 10.0, "offset": 0.0, "basis": "1 g/dL = 10 g/L"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 131,
+          "max_value": 172,
+          "unit": "g/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 115,
+          "max_value": 150,
+          "unit": "g/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "4544-3",
+      "entry_kind": "metric",
+      "display_name": "红细胞压积",
+      "aliases": ["HCT", "红细胞比容", "血细胞压积"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "%",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 40,
+          "max_value": 50,
+          "unit": "%",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 35,
+          "max_value": 45,
+          "unit": "%",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "777-3",
+      "entry_kind": "metric",
+      "display_name": "血小板计数",
+      "aliases": ["PLT", "血小板"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "10*9/L",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 125,
+          "max_value": 350,
+          "unit": "10*9/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2951-2",
+      "entry_kind": "metric",
+      "display_name": "平均红细胞体积",
+      "aliases": ["MCV"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "fL",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 82,
+          "max_value": 100,
+          "unit": "fL",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "785-6",
+      "entry_kind": "metric",
+      "display_name": "平均红细胞血红蛋白量",
+      "aliases": ["MCH"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "pg",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 27,
+          "max_value": 34,
+          "unit": "pg",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "786-4",
+      "entry_kind": "metric",
+      "display_name": "平均红细胞血红蛋白浓度",
+      "aliases": ["MCHC"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "g/L",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 316,
+          "max_value": 354,
+          "unit": "g/L",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "770-8",
+      "entry_kind": "metric",
+      "display_name": "中性粒细胞百分比",
+      "aliases": ["NEUT%", "中性粒细胞比率"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "%",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 40,
+          "max_value": 75,
+          "unit": "%",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "751-8",
+      "entry_kind": "metric",
+      "display_name": "淋巴细胞百分比",
+      "aliases": ["LYMPH%", "淋巴细胞比率"],
+      "category": "blood_routine",
+      "system": "hematology",
+      "value_type": "numeric",
+      "standard_unit": "%",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 20,
+          "max_value": 50,
+          "unit": "%",
+          "source": "WS/T 405-2012《血细胞分析参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "20454-5",
+      "entry_kind": "metric",
+      "display_name": "尿蛋白定性",
+      "aliases": ["尿蛋白", "Urine protein"],
+      "category": "urine_stool",
+      "system": "urinary",
+      "value_type": "qualitative",
+      "qualitative_values": ["阴性", "±", "+", "++", "+++", "++++"],
+      "expected_qualitative": "阴性",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2350-7",
+      "entry_kind": "metric",
+      "display_name": "尿糖定性",
+      "aliases": ["尿糖", "Urine glucose"],
+      "category": "urine_stool",
+      "system": "urinary",
+      "value_type": "qualitative",
+      "qualitative_values": ["阴性", "±", "+", "++", "+++", "++++"],
+      "expected_qualitative": "阴性",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-URINE-OCCULT-BLOOD",
+      "entry_kind": "metric",
+      "display_name": "尿潜血定性",
+      "aliases": ["尿隐血", "尿潜血"],
+      "category": "urine_stool",
+      "system": "urinary",
+      "value_type": "qualitative",
+      "qualitative_values": ["阴性", "±", "+", "++", "+++"],
+      "expected_qualitative": "阴性",
+      "notes": "IC 内部编码；LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2965-2",
+      "entry_kind": "metric",
+      "display_name": "尿比重",
+      "aliases": ["Specific gravity", "SG"],
+      "category": "urine_stool",
+      "system": "urinary",
+      "value_type": "numeric",
+      "standard_unit": "无量纲",
+      "reference_ranges": [
+        {
+          "population": "成人（随机尿）",
+          "min_value": 1.003,
+          "max_value": 1.03,
+          "unit": "无量纲",
+          "source": "人卫《诊断学》通用临床参考",
+          "source_version": "第9版",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-URINE-MICROSCOPY",
+      "entry_kind": "metric",
+      "display_name": "尿沉渣镜检",
+      "aliases": ["尿镜检"],
+      "category": "urine_stool",
+      "system": "urinary",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-STOOL-OCCULT-BLOOD",
+      "entry_kind": "metric",
+      "display_name": "便潜血定性",
+      "aliases": ["粪便隐血", "便隐血", "FOB"],
+      "category": "urine_stool",
+      "system": "digestive",
+      "value_type": "qualitative",
+      "qualitative_values": ["阴性", "弱阳性", "阳性"],
+      "expected_qualitative": "阴性",
+      "notes": "IC 内部编码；LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-STOOL-MICROSCOPY",
+      "entry_kind": "metric",
+      "display_name": "便常规镜检",
+      "aliases": ["粪便镜检", "便常规"],
+      "category": "urine_stool",
+      "system": "digestive",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "1742-6",
+      "entry_kind": "metric",
+      "display_name": "丙氨酸氨基转移酶",
+      "aliases": ["ALT", "谷丙转氨酶", "GPT"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "U/L",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 9,
+          "max_value": 50,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 7,
+          "max_value": 35,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "1920-8",
+      "entry_kind": "metric",
+      "display_name": "天门冬氨酸氨基转移酶",
+      "aliases": ["AST", "谷草转氨酶", "GOT"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "U/L",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 15,
+          "max_value": 40,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 13,
+          "max_value": 35,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2324-2",
+      "entry_kind": "metric",
+      "display_name": "γ-谷氨酰基转移酶",
+      "aliases": ["GGT", "谷氨酰转肽酶", "γ-GT"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "U/L",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 10,
+          "max_value": 60,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 7,
+          "max_value": 45,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "6768-6",
+      "entry_kind": "metric",
+      "display_name": "碱性磷酸酶",
+      "aliases": ["ALP", "AKP"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "U/L",
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 45,
+          "max_value": 125,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 35,
+          "max_value": 100,
+          "unit": "U/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "1751-7",
+      "entry_kind": "metric",
+      "display_name": "白蛋白",
+      "aliases": ["ALB", "Albumin"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "g/L",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 40,
+          "max_value": 55,
+          "unit": "g/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "1975-2",
+      "entry_kind": "metric",
+      "display_name": "总胆红素",
+      "aliases": ["TBIL", "TBILI"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "μmol/L",
+      "unit_conversions": [
+        {"from_unit": "μmol/L", "to_unit": "mg/dL", "factor": 0.0585, "offset": 0.0, "basis": "1 mg/dL = 17.1 μmol/L（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 3.1,
+          "max_value": 19.0,
+          "unit": "μmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-BILI-DIRECT",
+      "entry_kind": "metric",
+      "display_name": "直接胆红素",
+      "aliases": ["DBIL", "结合胆红素"],
+      "category": "biochemistry",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "μmol/L",
+      "unit_conversions": [
+        {"from_unit": "μmol/L", "to_unit": "mg/dL", "factor": 0.0585, "offset": 0.0, "basis": "1 mg/dL = 17.1 μmol/L（通用临床换算）"}
+      ],
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记（本机构方法学）",
+      "notes": "IC 内部编码；LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2160-0",
+      "entry_kind": "metric",
+      "display_name": "肌酐",
+      "aliases": ["CREA", "血肌酐", "Cr"],
+      "category": "biochemistry",
+      "system": "urinary",
+      "value_type": "numeric",
+      "standard_unit": "μmol/L",
+      "unit_conversions": [
+        {"from_unit": "μmol/L", "to_unit": "mg/dL", "factor": 0.0113, "offset": 0.0, "basis": "1 mg/dL = 88.4 μmol/L（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 57,
+          "max_value": 97,
+          "unit": "μmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 41,
+          "max_value": 73,
+          "unit": "μmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "3084-1",
+      "entry_kind": "metric",
+      "display_name": "尿酸",
+      "aliases": ["UA", "血尿酸", "Uric acid"],
+      "category": "biochemistry",
+      "system": "urinary",
+      "value_type": "numeric",
+      "standard_unit": "μmol/L",
+      "unit_conversions": [
+        {"from_unit": "μmol/L", "to_unit": "mg/dL", "factor": 0.0168, "offset": 0.0, "basis": "1 mg/dL = 59.48 μmol/L（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人男性",
+          "min_value": 208,
+          "max_value": 428,
+          "unit": "μmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        },
+        {
+          "population": "成人女性",
+          "min_value": 155,
+          "max_value": 357,
+          "unit": "μmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "3094-0",
+      "entry_kind": "metric",
+      "display_name": "尿素",
+      "aliases": ["尿素氮", "BUN", "Urea"],
+      "category": "biochemistry",
+      "system": "urinary",
+      "value_type": "numeric",
+      "standard_unit": "mmol/L",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 2.9,
+          "max_value": 8.2,
+          "unit": "mmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-EGFR",
+      "entry_kind": "metric",
+      "display_name": "估算肾小球滤过率",
+      "aliases": ["eGFR", "GFR"],
+      "category": "biochemistry",
+      "system": "urinary",
+      "value_type": "numeric",
+      "standard_unit": "mL/min/1.73m2",
+      "reference_ranges": [
+        {
+          "population": "成人（G1 期）",
+          "min_value": 90,
+          "max_value": null,
+          "unit": "mL/min/1.73m2",
+          "source": "KDIGO CKD 分期",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "eGFR 计算公式（CKD-EPI 等）与适用人群相关，需登记本机构公式版本；CKD 分期需 eGFR<60 持续 3 个月以上",
+      "notes": "IC 内部编码",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "1558-6",
+      "entry_kind": "metric",
+      "display_name": "空腹血糖",
+      "aliases": ["GLU", "血糖", "Fasting glucose", "FPG"],
+      "category": "metabolism_lipids",
+      "system": "endocrine",
+      "value_type": "numeric",
+      "standard_unit": "mmol/L",
+      "unit_conversions": [
+        {"from_unit": "mmol/L", "to_unit": "mg/dL", "factor": 18.016, "offset": 0.0, "basis": "1 mmol/L = 18.02 mg/dL（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人（空腹 ≥8h）",
+          "min_value": 3.9,
+          "max_value": 6.1,
+          "unit": "mmol/L",
+          "source": "WS/T 404-2012《临床常用生化检验项目参考区间》",
+          "source_version": "2012",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "4548-4",
+      "entry_kind": "metric",
+      "display_name": "糖化血红蛋白",
+      "aliases": ["HbA1c", "糖化血红蛋白HbA1c"],
+      "category": "metabolism_lipids",
+      "system": "endocrine",
+      "value_type": "numeric",
+      "standard_unit": "%",
+      "reference_ranges": [
+        {
+          "population": "成人",
+          "min_value": 4.0,
+          "max_value": 6.0,
+          "unit": "%",
+          "source": "中国2型糖尿病防治指南（2020年版）",
+          "source_version": "2020",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2093-3",
+      "entry_kind": "metric",
+      "display_name": "总胆固醇",
+      "aliases": ["TC", "CHOL", "Cholesterol"],
+      "category": "metabolism_lipids",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "mmol/L",
+      "unit_conversions": [
+        {"from_unit": "mmol/L", "to_unit": "mg/dL", "factor": 38.67, "offset": 0.0, "basis": "1 mmol/L = 38.67 mg/dL（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人（合适范围）",
+          "min_value": null,
+          "max_value": 5.2,
+          "unit": "mmol/L",
+          "source": "中国成人血脂异常防治指南（2016年修订版）",
+          "source_version": "2016",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2571-8",
+      "entry_kind": "metric",
+      "display_name": "甘油三酯",
+      "aliases": ["TG", "Triglyceride"],
+      "category": "metabolism_lipids",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "mmol/L",
+      "unit_conversions": [
+        {"from_unit": "mmol/L", "to_unit": "mg/dL", "factor": 88.57, "offset": 0.0, "basis": "1 mmol/L = 88.57 mg/dL（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人（空腹，合适范围）",
+          "min_value": null,
+          "max_value": 1.7,
+          "unit": "mmol/L",
+          "source": "中国成人血脂异常防治指南（2016年修订版）",
+          "source_version": "2016",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2085-9",
+      "entry_kind": "metric",
+      "display_name": "高密度脂蛋白胆固醇",
+      "aliases": ["HDL-C", "HDL", "高密度脂蛋白"],
+      "category": "metabolism_lipids",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "mmol/L",
+      "unit_conversions": [
+        {"from_unit": "mmol/L", "to_unit": "mg/dL", "factor": 38.67, "offset": 0.0, "basis": "1 mmol/L = 38.67 mg/dL（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人（降低为异常）",
+          "min_value": 1.0,
+          "max_value": null,
+          "unit": "mmol/L",
+          "source": "中国成人血脂异常防治指南（2016年修订版）",
+          "source_version": "2016",
+          "review_status": "pending_review"
+        }
+      ],
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "13457-7",
+      "entry_kind": "metric",
+      "display_name": "低密度脂蛋白胆固醇",
+      "aliases": ["LDL-C", "LDL", "低密度脂蛋白"],
+      "category": "metabolism_lipids",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "mmol/L",
+      "unit_conversions": [
+        {"from_unit": "mmol/L", "to_unit": "mg/dL", "factor": 38.67, "offset": 0.0, "basis": "1 mmol/L = 38.67 mg/dL（通用临床换算）"}
+      ],
+      "reference_ranges": [
+        {
+          "population": "成人（理想范围）",
+          "min_value": null,
+          "max_value": 3.4,
+          "unit": "mmol/L",
+          "source": "中国成人血脂异常防治指南（2016年修订版）",
+          "source_version": "2016",
+          "review_status": "pending_review"
+        }
+      ],
+      "reference_note": "LDL-C 理想值随心血管风险分层而不同（<3.4/<2.6/<1.8 mmol/L），此处登记一般人群切点",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-ECG-CONCLUSION",
+      "entry_kind": "metric",
+      "display_name": "心电图结论",
+      "aliases": ["ECG结论", "心电图诊断"],
+      "category": "ecg_function",
+      "system": "circulatory",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-ECG-VENTRICULAR-RATE",
+      "entry_kind": "metric",
+      "display_name": "心室率",
+      "aliases": ["心电图心率", "室率"],
+      "category": "ecg_function",
+      "system": "circulatory",
+      "value_type": "numeric",
+      "standard_unit": "次/分",
+      "reference_ranges": [
+        {
+          "population": "成人（安静状态）",
+          "min_value": 60,
+          "max_value": 100,
+          "unit": "次/分",
+          "source": "人卫《诊断学》通用临床参考",
+          "source_version": "第9版",
+          "review_status": "pending_review"
+        }
+      ],
+      "notes": "IC 内部编码；与 8867-4（一般生命体征心率）区分场景，LOINC 候选待核验",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-ECG",
+      "entry_kind": "exam_item",
+      "display_name": "心电图检查",
+      "aliases": ["十二导联心电图", "ECG检查"],
+      "category": "ecg_function",
+      "system": "circulatory",
+      "value_type": "structured",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-US-ABDOMEN",
+      "entry_kind": "exam_item",
+      "display_name": "腹部超声",
+      "aliases": ["腹部彩超", "肝胆胰脾肾超声"],
+      "category": "imaging",
+      "system": "digestive",
+      "value_type": "structured",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-US-THYROID",
+      "entry_kind": "exam_item",
+      "display_name": "甲状腺超声",
+      "aliases": ["甲状腺彩超"],
+      "category": "imaging",
+      "system": "endocrine",
+      "value_type": "structured",
+      "notes": "扩展项目：按机构套餐启用，不默认人人检查",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-US-BREAST",
+      "entry_kind": "exam_item",
+      "display_name": "乳腺超声",
+      "aliases": ["乳腺彩超"],
+      "category": "imaging",
+      "system": "reproductive",
+      "value_type": "structured",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-DR-CHEST",
+      "entry_kind": "exam_item",
+      "display_name": "胸部正位摄影",
+      "aliases": ["胸片", "胸部DR", "胸部X线"],
+      "category": "imaging",
+      "system": "respiratory",
+      "value_type": "structured",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-CT-CHEST-LOWDOSE",
+      "entry_kind": "exam_item",
+      "display_name": "低剂量胸部CT",
+      "aliases": ["LDCT", "胸部低剂量螺旋CT"],
+      "category": "imaging",
+      "system": "respiratory",
+      "value_type": "structured",
+      "notes": "扩展项目：按机构套餐/风险评估启用；原始图像不在本轮处理范围",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-IMG-FINDING",
+      "entry_kind": "metric",
+      "display_name": "影像所见",
+      "aliases": ["超声所见", "放射所见", "报告所见"],
+      "category": "imaging",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:M-IMG-CONCLUSION",
+      "entry_kind": "metric",
+      "display_name": "影像结论",
+      "aliases": ["超声提示", "放射诊断", "报告结论"],
+      "category": "imaging",
+      "system": "general",
+      "value_type": "text",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "3016-3",
+      "entry_kind": "metric",
+      "display_name": "促甲状腺激素",
+      "aliases": ["TSH"],
+      "category": "extended",
+      "system": "endocrine",
+      "value_type": "numeric",
+      "standard_unit": "mIU/L",
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记：TSH 区间随检测方法学（化学发光平台）差异明显，需登记本机构区间",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "3024-7",
+      "entry_kind": "metric",
+      "display_name": "游离甲状腺素",
+      "aliases": ["FT4", "游离T4"],
+      "category": "extended",
+      "system": "endocrine",
+      "value_type": "numeric",
+      "standard_unit": "pmol/L",
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记（方法学差异）",
+      "notes": "扩展项目：按机构套餐启用；LOINC 编码待复核",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2069-3",
+      "entry_kind": "metric",
+      "display_name": "游离三碘甲状腺原氨酸",
+      "aliases": ["FT3", "游离T3"],
+      "category": "extended",
+      "system": "endocrine",
+      "value_type": "numeric",
+      "standard_unit": "pmol/L",
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记（方法学差异）",
+      "notes": "扩展项目：按机构套餐启用；LOINC 编码待复核",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2035-0",
+      "entry_kind": "metric",
+      "display_name": "癌胚抗原",
+      "aliases": ["CEA"],
+      "category": "extended",
+      "system": "digestive",
+      "value_type": "numeric",
+      "standard_unit": "ng/mL",
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记（方法学差异）；肿瘤标志物单项升高不作为诊断依据",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2029-6",
+      "entry_kind": "metric",
+      "display_name": "甲胎蛋白",
+      "aliases": ["AFP"],
+      "category": "extended",
+      "system": "hepatobiliary",
+      "value_type": "numeric",
+      "standard_unit": "ng/mL",
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记（方法学差异）；肿瘤标志物单项升高不作为诊断依据",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "2857-1",
+      "entry_kind": "metric",
+      "display_name": "前列腺特异抗原",
+      "aliases": ["PSA", "总PSA", "tPSA"],
+      "category": "extended",
+      "system": "reproductive",
+      "value_type": "numeric",
+      "standard_unit": "ng/mL",
+      "reference_ranges": [],
+      "reference_note": "参考区间待登记（方法学差异）；适用于男性，单次升高需复查",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "5196-1",
+      "entry_kind": "metric",
+      "display_name": "乙型肝炎表面抗原",
+      "aliases": ["HBsAg", "乙肝表面抗原"],
+      "category": "extended",
+      "system": "hepatobiliary",
+      "value_type": "qualitative",
+      "qualitative_values": ["阴性", "阳性"],
+      "expected_qualitative": "阴性",
+      "notes": "扩展项目：感染筛查类，按机构套餐启用；LOINC 编码待复核",
+      "source": "LOINC",
+      "source_version": "2.78（登记时点，编码待复核）",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-HP-BREATH",
+      "entry_kind": "exam_item",
+      "display_name": "幽门螺杆菌呼气试验",
+      "aliases": ["碳13呼气试验", "碳14呼气试验", "Hp呼气试验"],
+      "category": "extended",
+      "system": "digestive",
+      "value_type": "qualitative",
+      "qualitative_values": ["阴性", "阳性"],
+      "expected_qualitative": "阴性",
+      "notes": "扩展项目：按机构套餐启用；dpm 数值结果按文字保留原文",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-BMD",
+      "entry_kind": "exam_item",
+      "display_name": "骨密度检查",
+      "aliases": ["双能X线骨密度", "DEXA"],
+      "category": "extended",
+      "system": "musculoskeletal",
+      "value_type": "structured",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-ABI",
+      "entry_kind": "exam_item",
+      "display_name": "动脉硬化检测",
+      "aliases": ["踝肱指数检测", "ABI检测"],
+      "category": "extended",
+      "system": "circulatory",
+      "value_type": "structured",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    },
+    {
+      "code": "IC:EX-FUNDUS",
+      "entry_kind": "exam_item",
+      "display_name": "眼底检查",
+      "aliases": ["眼底照相"],
+      "category": "extended",
+      "system": "sensory",
+      "value_type": "structured",
+      "notes": "扩展项目：按机构套餐启用",
+      "source": "IC 内部编码登记表",
+      "source_version": "1.0",
+      "review_status": "pending_review"
+    }
+  ]
+}
