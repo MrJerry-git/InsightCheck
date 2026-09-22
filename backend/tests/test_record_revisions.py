@@ -365,3 +365,83 @@ def create_legacy_patient(db):
     db.commit()
     db.refresh(patient)
     return patient
+
+
+def test_unknown_unit_and_source_survive_persistence(test_app, db_session):
+    """H03/H04 交接：单位未知、原始值未知来源都必须原样落库，不能被猜测成标准单位。
+
+    审核要求 T02 明确未知单位/文字与定性值/来源的落库行为；此处用
+    ``unsupported_unit`` 与 ``unmapped_metric`` 两种真实异常路径验证：
+    原值、原单位与来源说明保留，标准单位与数值保持为空，不产生假换算。
+    """
+
+    make_account(db_session, "doctor-a")
+    for code, name, unit in (("HGB", "血红蛋白", "g/L"), ("LAB_X_9", "未登记项目", None)):
+        db_session.add(
+            MetricDictionary(
+                metric_code=code,
+                canonical_name=name,
+                aliases=[],
+                standard_unit=unit,
+                category="血液",
+                value_type=ValueType.NUMERIC,
+                unit_conversions={},
+                source="测试来源",
+                version="v1",
+            )
+        )
+    db_session.commit()
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        check = create_check(client, headers, patient_id, source_ref="H04 抽取：第 3 页表 2")
+
+        unknown_unit = client.post(
+            "/api/v1/lab-metrics",
+            json={
+                "health_check_id": check["id"],
+                "metric_code": "HGB",
+                "original_name": "血红蛋白",
+                "canonical_name": "血红蛋白",
+                "original_value": "14.2",
+                "original_unit": "g/dl(?)",
+                "status": "unknown",
+                "normalization_status": "unsupported_unit",
+                "normalization_version": "v1",
+                "source_kind": "import",
+                "source_ref": "H04 抽取：第 3 页表 2",
+            },
+            headers=headers,
+        )
+        assert unknown_unit.status_code == 201, unknown_unit.text
+        body = unknown_unit.json()
+        assert body["original_unit"] == "g/dl(?)"
+        assert body["standard_unit"] is None
+        assert body["value"] is None
+        assert body["source_kind"] == "import"
+        assert body["source_ref"] == "H04 抽取：第 3 页表 2"
+
+        unmapped = client.post(
+            "/api/v1/lab-metrics",
+            json={
+                "health_check_id": check["id"],
+                "metric_code": "LAB_X_9",
+                "original_name": "未登记项目",
+                "canonical_name": "未登记项目",
+                "original_value": "3.3",
+                "original_unit": "mmol/L",
+                "status": "unknown",
+                "normalization_status": "unmapped_metric",
+                "normalization_version": "v1",
+                "source_kind": "import",
+            },
+            headers=headers,
+        )
+        assert unmapped.status_code == 201, unmapped.text
+        assert unmapped.json()["metric_code"] == "LAB_X_9"
+
+        revisions = db_session.scalars(select(RecordRevision)).all()
+        imported = [item for item in revisions if item.source_kind == "import"]
+        assert imported and all(item.after is not None for item in imported)
+        stored = db_session.scalar(select(LabMetric).where(LabMetric.metric_code == "HGB"))
+        assert stored is not None and stored.standard_unit is None and stored.value is None
