@@ -4,7 +4,9 @@
 - 原值永远保留（raw_* 字段）；
 - 单位只有命中字典登记的换算依据才转换，否则保留原单位并显式标记；
 - 数值/定性/文字三种值类型都支持；
-- 未登记指标/定性值保留原貌进入待映射队列，不丢弃、不猜。
+- 未登记指标/定性值保留原貌进入待映射队列，不丢弃、不猜；
+- 有量纲指标未提供单位（或空白单位）时，不自动赋予标准单位，标记
+  ``unit_missing`` 且不生成可比较数值，等待人工确认（PR #19 审核 P1）。
 """
 
 from __future__ import annotations
@@ -225,8 +227,37 @@ class TabularReportParser:
         standard_norm = normalize_unit(standard)
         entry.canonical_value = value
 
-        if not standard or raw_unit_norm == standard_norm or raw_unit_norm is None:
-            entry.canonical_unit = standard or entry.raw_unit
+        # 字典未登记标准单位：视为无量纲指标，按原值映射，不需要单位确认。
+        if not standard:
+            entry.canonical_unit = entry.raw_unit
+            entry.status = "mapped"
+            return
+
+        # 有量纲指标但未提供单位（缺失或空白）：不猜测、不赋标准单位。
+        # 保留原值，标为待确认，且不生成可比较数值，避免下游当作已标准化数据
+        # 参与异常判定与趋势比较（PR #19 审核 P1）。
+        if raw_unit_norm is None:
+            entry.canonical_value = None
+            entry.canonical_unit = None
+            entry.status = "unit_missing"
+            entry.unit_confirmation_required = True
+            issues.append(
+                ParseIssue(
+                    source_name=source_name,
+                    row_index=row_index,
+                    column=result_col,
+                    field="单位",
+                    message=(
+                        f"{entry.raw_name}：未提供单位，标准单位为 {standard}，"
+                        f"原值 {entry.raw_value!r} 已保留；需人工确认单位后才能比较"
+                    ),
+                    severity="warning",
+                )
+            )
+            return
+
+        if raw_unit_norm == standard_norm:
+            entry.canonical_unit = standard
             entry.status = "mapped"
             return
 
