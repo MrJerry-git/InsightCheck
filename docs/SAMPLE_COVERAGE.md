@@ -6,6 +6,7 @@
 
 - `test_sample_chain.py`：样例 → H03 解析（H01 字典映射）→ H05 跨系统汇总 → H02 关联 → H07 规则候选。
 - `test_full_chain.py`：**真实 CSV/Excel/PDF 文件 → 校对队列 → 分析 → 规则候选 → 三档方案**的整体联调（含无法计算项传至页面、证据回溯、locator 保留）。
+- `test_service_contracts.py`：**按 `docs/H_SERIES_SERVICE_CONTRACTS.md` 逐项核对各模块实际接口**（版本号 / 字段名 / 签名形状 / 硬性规则），防止契约文档与实现脱节。
 
 ## 〇、本分支包含的修复与合并状态（重要）
 
@@ -117,8 +118,29 @@
 
 ```
 $ python -m pytest tests -q
-406 passed, 3 skipped in 19.98s
+439 passed, 4 skipped in 25.42s
 ```
 
-- `tests/integration_h12/` 子系统：24 passed（`test_full_chain.py`）。
-- 本分支已吸收 `aa2062be` 的四条参考区间边界回归，随全套件通过。
+子系统：
+
+| 目录/文件 | 结果 |
+| --- | --- |
+| `tests/integration_h12/`（合计） | **57 passed, 1 skipped** |
+| ├─ `test_sample_chain.py` | 10 passed |
+| ├─ `test_full_chain.py` | 14 passed |
+| └─ `test_service_contracts.py` | 33 passed, 1 skipped |
+| `tests/exam_dictionary/` | 29 passed（含已吸收的 `aa2062be` 参考区间边界回归） |
+
+### 契约一致性检查结果
+
+`test_service_contracts.py` 对照 `docs/H_SERIES_SERVICE_CONTRACTS.md` 核对结论：
+
+- **版本号全部一致**：`exam-dictionary-v1`、`finding-catalog-v1`、`tabular-parsing-v1`、`report-extraction-v1`、`report-structuring-v1`、`cross-system-summary-v1`、`imaging-report-parser-v1`、`rule-candidates-v1`、`qa-service-v1`、`model-task-registry-v1`。
+  说明：实现把版本号放在**类属性 `VERSION`**（非实例属性 `version`），文档描述用 `version: str`；语义一致，此处按实现核对并记录该形态差异。
+- **硬性规则通过**：H02 `relation_type` 仅取提示/观察/危险因素，无确诊口径；H11 映射模板 14 条全部 `unverified`；H09 未接入任务均给出显式 `unavailable_reason`（`artifact_missing` / `review_not_frozen`）；H07 规则内容 `pending_review` 起步。
+- **已记录的两处命名差异（不构成阻断，供 T 系列对齐）**：
+  1. 契约写 `LesionTerminologyConfig`，实现为 `LesionSiteConfig`（同义：部位词表配置）。
+  2. 契约写字典加载器 `ExamDictionary.lookup` 等为实例方法，实现一致；但文档中 `version` 字段应改注为 `VERSION` 类属性以与实际形态对齐。
+- **本分支未合并项**：H06 的 `SECTION_KEYS` 由 PR #23 修复（`565d45b`）引入，本分支为未合并状态，测试**显式 skip 并标注来源**，不假装通过。
+
+> 契约文档与实现的这些措辞差异属**文档待更新**，将在 #23 合并后随 H12 重新合并 main 时一并修订。
