@@ -1,10 +1,14 @@
-"""Add conversational profile, session, draft, action and snapshot tables."""
+"""Add conversational profile, session, draft, action and snapshot tables.
+
+挂载点：T 链 head ``a1f7c3b90d42``（报告证据快照）。参赛版与 2.0 使用同一条
+迁移链：T 系列先合并，本 PR 以 T 链为基底，避免出现两个 alembic head。
+"""
 import sqlalchemy as sa
 
 from alembic import op
 
 revision = "a7c3d5e91b02"
-down_revision = "e021a0b10001"
+down_revision = "a1f7c3b90d42"
 branch_labels = None
 depends_on = None
 
@@ -21,7 +25,10 @@ def upgrade():
         sa.Column("analysis_stale", sa.Boolean(), server_default="0", nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True),
                   server_default=sa.func.now(), nullable=False),
+        sa.Column("owner_account_id", sa.String(36),
+                  sa.ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True),
     )
+    op.create_index("ix_profiles_owner_account_id", "profiles", ["owner_account_id"])
     op.create_table(
         "profile_drafts",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -142,4 +149,5 @@ def downgrade():
     op.drop_table("conversation_sessions")
     op.drop_index("ix_profile_drafts_profile_id", table_name="profile_drafts")
     op.drop_table("profile_drafts")
+    op.drop_index("ix_profiles_owner_account_id", table_name="profiles")
     op.drop_table("profiles")

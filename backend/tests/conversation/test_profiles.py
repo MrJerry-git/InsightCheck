@@ -154,8 +154,10 @@ def test_two_people_do_not_inherit_data(client, model):
     body = send(client, pid, other_text, "H-upload")
     assert body["missing"] == []
     assert body["confirmed_data"] is None  # 未确认前不进入历史
-    done = client.post(f"{BASE}/profiles/{pid}/confirm",
-                       json={"op_id": "H-confirm", "expected_version": 0}).json()
+    done = client.post(
+        f"{BASE}/profiles/{pid}/confirm",
+        json={"op_id": "H-confirm", "expected_version": 0,
+              "expected_draft_version": 1}).json()
     assert done["profile_id"] == pid
     assert len(done["confirmed_data"]["visits"]) == 1
     assert done["confirmed_data"]["sex"] == "female"
@@ -196,8 +198,10 @@ def test_late_response_of_old_profile_does_not_touch_new(client, model):
     old_state = client.get(f"{BASE}/profiles/{old['profile_id']}/state").json()
     fresh = new_profile(client, "J-new", save="no", profile_id=old["profile_id"]).json()
     # 旧档案上迟到的请求仍按自己的版本校验，只影响旧档案。
-    late = client.post(f"{BASE}/profiles/{old['profile_id']}/confirm",
-                       json={"op_id": "J-late", "expected_version": 99})
+    late = client.post(
+        f"{BASE}/profiles/{old['profile_id']}/confirm",
+        json={"op_id": "J-late", "expected_version": 99,
+              "expected_draft_version": old_state["draft_version"]})
     assert late.status_code == 409
     late_ok = send(client, old["profile_id"], "补充：检查日期是 2025-09-19",
                    "J-late-msg")

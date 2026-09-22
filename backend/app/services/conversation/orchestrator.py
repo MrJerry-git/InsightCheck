@@ -126,6 +126,47 @@ def _guard_version(ws: S.Workspace, expected: int | None) -> None:
                                        "expected_version": expected})
 
 
+def _guard_draft_version(ws: S.Workspace, expected: int | None) -> None:
+    """确认前必须比对草稿版本，不能只比对已确认版本（审核 P1）。
+
+    用户看到的是草稿；若期间有新的消息把草稿改动过，确认必须失败并要求重新核对。
+    """
+
+    current = ws.draft_row.version if ws.draft_row is not None else 0
+    if expected is not None and expected != current:
+        raise VersionConflict(
+            "草稿已更新，请重新核对待确认内容后再确认。",
+            details={"current_draft_version": current,
+                     "expected_draft_version": expected},
+        )
+
+
+def _guard_session(ws: S.Workspace, session_id: str | None) -> None:
+    """会话绑定：旧会话的迟到请求不能写入新会话（审核 P1）。"""
+
+    if session_id and session_id != ws.session_id:
+        raise VersionConflict(
+            "该会话已被新的会话替换，请以当前会话为准。",
+            details={"current_session_id": ws.session_id,
+                     "expected_session_id": session_id},
+        )
+
+
+def ensure_profile_access(db: Session, profile_id: str, account_id: str | None,
+                          *, is_admin: bool) -> Profile:
+    """账号归属校验：非管理员只能访问自己名下的对话档案。"""
+
+    profile = db.get(Profile, profile_id)
+    if profile is None:
+        raise ProfileNotFound("档案不存在")
+    if is_admin or account_id is None:
+        return profile
+    if profile.owner_account_id != account_id:
+        # 不区分“不存在/无权”，与其他模块保持一致的 404 语义。
+        raise ProfileNotFound("档案不存在")
+    return profile
+
+
 def _replay(db: Session, profile_id: str, op_id: str) -> dict | None:
     log = S.find_log(db, profile_id, op_id)
     return dict(log.result) if log and log.result else None
@@ -165,6 +206,7 @@ def handle_message(db: Session, profile_id: str, body, *, today: date | None = N
     replay = _replay(db, profile_id, body.op_id)
     if replay is not None:
         return 200, replay
+    _guard_session(ws, getattr(body, "session_id", None))
     _guard_version(ws, body.expected_version)
     before = S.snapshot_state(ws.profile, ws.draft_row)
     outcome = X.Outcome()
@@ -610,8 +652,8 @@ def _answer_delete(db: Session, ws: S.Workspace, row, payload: dict, text: str,
 # ------------------------------------------------------------------ 档案级操作
 
 
-def create_profile(db: Session, body: NewProfileRequest, *, today: date | None = None
-                   ) -> tuple[int, dict]:
+def create_profile(db: Session, body: NewProfileRequest, *, today: date | None = None,
+                   account_id: str | None = None) -> tuple[int, dict]:
     today = today or date.today()
     option = body.save_current
     source_id = option.profile_id if option else None
@@ -642,7 +684,8 @@ def create_profile(db: Session, body: NewProfileRequest, *, today: date | None =
                 raise InvalidInput("当前规划保存失败，仍留在原档案。",
                                    details={"error": "save_failed"}) from exc
     profile = Profile(display_name=_display_name(db, body.display_name, today), version=0,
-                      confirmed=None, analysis_stale=False)
+                      confirmed=None, analysis_stale=False,
+                      owner_account_id=account_id)
     db.add(profile)
     db.flush()
     session = S.start_session(db, profile.id)
@@ -676,7 +719,10 @@ def confirm_profile(db: Session, profile_id: str, body, *, today: date | None = 
     replay = _replay(db, profile_id, body.op_id)
     if replay is not None:
         return 200, replay
+    _guard_session(ws, getattr(body, "session_id", None))
     _guard_version(ws, body.expected_version)
+    # 必填的草稿版本：用户确认的必须是当前这一版草稿。
+    _guard_draft_version(ws, getattr(body, "expected_draft_version", None))
     before = S.snapshot_state(ws.profile, ws.draft_row)
     outcome = X.Outcome()
     try:
@@ -707,6 +753,7 @@ def restart_profile(db: Session, profile_id: str, body, *, today: date | None = 
     replay = _replay(db, profile_id, body.op_id)
     if replay is not None:
         return 200, replay
+    _guard_session(ws, getattr(body, "session_id", None))
     before = S.snapshot_state(ws.profile, ws.draft_row)
     S.expire_actions(db, profile_id)
     ws.session = S.start_session(db, profile_id)
@@ -730,6 +777,7 @@ def generate_plan(db: Session, profile_id: str, body, *, today: date | None = No
     replay = _replay(db, profile_id, body.op_id)
     if replay is not None:
         return 200, replay
+    _guard_session(ws, getattr(body, "session_id", None))
     _guard_version(ws, body.expected_version)
     before = S.snapshot_state(ws.profile, ws.draft_row)
     try:
@@ -753,9 +801,12 @@ def generate_plan(db: Session, profile_id: str, body, *, today: date | None = No
         raise
 
 
-def list_profiles(db: Session) -> list[dict]:
-    rows = db.scalars(select(Profile).order_by(Profile.created_at.desc(),
-                                               Profile.id.desc()).limit(100)).all()
+def list_profiles(db: Session, *, account_id: str | None = None) -> list[dict]:
+    statement = select(Profile)
+    if account_id is not None:
+        statement = statement.where(Profile.owner_account_id == account_id)
+    rows = db.scalars(statement.order_by(Profile.created_at.desc(),
+                                         Profile.id.desc()).limit(100)).all()
     return [{"profile_id": row.id, "display_name": row.display_name, "version": row.version,
              "created_at": row.created_at.isoformat() if row.created_at else None,
              "has_confirmed": bool((row.confirmed or {}).get("visits")),

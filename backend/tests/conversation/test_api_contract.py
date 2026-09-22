@@ -65,7 +65,7 @@ def test_unknown_profile_returns_404(client, model):
     missing = "00000000-0000-0000-0000-000000000000"
     assert client.get(f"{BASE}/profiles/{missing}/state").status_code == 404
     assert client.post(f"{BASE}/profiles/{missing}/confirm",
-                       json={"op_id": "x"}).status_code == 404
+                       json={"op_id": "x", "expected_draft_version": 0}).status_code == 404
     assert client.post(f"{BASE}/profiles/{missing}/plan",
                        json={"op_id": "x"}).status_code == 404
     assert client.get(f"{BASE}/profiles/{missing}/plans").status_code == 404
@@ -140,8 +140,10 @@ def test_validation_failure_keeps_draft(client, model):
     send(client, profile["profile_id"], text, "c6-draft")
     draft_state = client.get(f"{BASE}/profiles/{profile['profile_id']}/state").json()
     assert draft_state["missing"], draft_state
-    failed = client.post(f"{BASE}/profiles/{profile['profile_id']}/confirm",
-                         json={"op_id": "c6-confirm-partial", "expected_version": 1})
+    failed = client.post(
+        f"{BASE}/profiles/{profile['profile_id']}/confirm",
+        json={"op_id": "c6-confirm-partial",
+              "expected_draft_version": draft_state["draft_version"]})
     assert failed.status_code == 422
     body = failed.json()
     assert body["error"] == "validation_failed"

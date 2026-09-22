@@ -34,6 +34,10 @@ class Profile(IdMixin, CreatedAtMixin, Base):
     version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     confirmed: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     analysis_stale: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # 归属账号：与 patients.owner_account_id 同一套权限语义（T01）。
+    owner_account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

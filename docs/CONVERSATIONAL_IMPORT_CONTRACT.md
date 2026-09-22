@@ -513,3 +513,32 @@ POST messages（另一 worker 正在处理）→ 429 {error:"processing"}
 - 真实本地模型记录（型号、输入、耗时、追问、实际数据库变化）：使用
   `backend/scripts/smoke_conversation.py`（需本机 Ollama + 已安装模型）执行并归档输出。
 - 验收 10 的“上传文字要求删除记录”在真实模型下的复核（自动化测试已用模拟输出覆盖）。
+
+## 15. 2026-09-22 审核复核后的契约变更（前端必读）
+
+本轮修复了"旧确认请求可确认新草稿"和"对话接口没有账号归属"两个 P1 问题，
+前端接入时按以下契约实现：
+
+1. **确认必须携带草稿版本**：`POST /profiles/{id}/confirm` 的
+   `expected_draft_version` 为**必填**字段，值取最近一次 `GET state` 返回的
+   `draft_version`。若期间草稿被其它请求推进，服务端返回 **409**
+   `version_conflict`，响应含 `current_draft_version` 与 `expected_draft_version`，
+   前端必须提示"内容已更新，请重新核对"并刷新页面，不得重试同一版本。
+2. **会话绑定**：`messages`/`confirm`/`restart`/`plan` 可携带 `session_id`
+   （取 `GET state` 的 `session_id`）。携带旧会话 id 的迟到请求返回 **409**，
+   响应含 `current_session_id`；前端应丢弃该响应，不能写入当前工作区。
+3. **鉴权与归属**：全部对话端点都需要 `Authorization: Bearer <token>`（与 T01 一致）；
+   未登录返回 **401**，访问他人档案与不存在同样返回 **404**（不泄露是否存在）。
+   `POST /profiles` 创建的档案自动归属当前账号，`GET /profiles` 只返回本账号档案。
+4. **确认后清空与点亮**：人体点亮、系统历史与规划只认 `confirmed_data`；
+   草稿版本变化不得改变已确认内容与已保存规划。
+
+前端联调用例（与后端自动化测试一一对应，见 `backend/tests/conversation/test_review_fixes.py`）：
+
+| 场景 | 期望 |
+| --- | --- |
+| 看到 draft_version=1 → 别处更新为 2 → 用 1 确认 | 409，提示重新核对，`confirmed_data` 不变 |
+| 用当前 `draft_version` 确认 | 200，`confirmed_data` 等于该版本草稿内容 |
+| `restart` 后旧会话再发消息 | 409，新会话无这条消息 |
+| 账号 B 访问账号 A 的档案 | 404；`GET /profiles` 列表不含 A 的档案 |
+| `AUTH_REQUIRED=true` 且匿名请求 | 401 |

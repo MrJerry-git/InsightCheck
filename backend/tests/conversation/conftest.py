@@ -181,9 +181,19 @@ def send(client: TestClient, profile_id: str, text: str, op_id: str,
     return response.json()
 
 
-def confirm(client: TestClient, profile_id: str, op_id: str, expected_version: int = 0):
+def confirm(client: TestClient, profile_id: str, op_id: str, expected_version: int = 0,
+            expected_draft_version: int | None = None, session_id: str | None = None):
+    """确认必须携带当前草稿版本（审核 P1）；未显式指定时按当前状态取。"""
+
+    if expected_draft_version is None:
+        state = client.get(f"{BASE}/profiles/{profile_id}/state").json()
+        expected_draft_version = state.get("draft_version", 0)
+    body = {"op_id": op_id, "expected_version": expected_version,
+            "expected_draft_version": expected_draft_version}
+    if session_id is not None:
+        body["session_id"] = session_id
     return client.post(f"{BASE}/profiles/{profile_id}/confirm",
-                       json={"op_id": op_id, "expected_version": expected_version})
+                       json=body)
 
 
 def stored_confirmed(client: TestClient, profile_id: str) -> dict | None:
