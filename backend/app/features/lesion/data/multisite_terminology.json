@@ -1,0 +1,74 @@
+{
+  "version": "lesion-terminology-sites-v1",
+  "generated_at": "2026-09-20",
+  "maintainer": "王宏锦（WHJ-2007），任务 H06",
+  "scope_note": "多部位术语扩展配置。内置肺部词表保持不变；此处登记的部位在匹配时与肺部位互不关联。匹配仅在同器官+同检查范围内进行，不跨部位强行关联，不做原始影像诊断。",
+  "location_aliases": {
+    "甲状腺右叶": "THYROID_RIGHT_LOBE",
+    "甲状腺左侧叶": "THYROID_LEFT_LOBE",
+    "甲状腺左叶": "THYROID_LEFT_LOBE",
+    "肝右叶": "LIVER_RIGHT_LOBE",
+    "肝左叶": "LIVER_LEFT_LOBE",
+    "肝内": "LIVER_INTRAHEPATIC",
+    "左肾": "KIDNEY_LEFT",
+    "右肾": "KIDNEY_RIGHT",
+    "左乳腺": "BREAST_LEFT",
+    "右乳腺": "BREAST_RIGHT",
+    "左乳": "BREAST_LEFT",
+    "右乳": "BREAST_RIGHT"
+  },
+  "location_labels": {
+    "THYROID_RIGHT_LOBE": "甲状腺右叶",
+    "THYROID_LEFT_LOBE": "甲状腺左叶",
+    "LIVER_RIGHT_LOBE": "肝右叶",
+    "LIVER_LEFT_LOBE": "肝左叶",
+    "LIVER_INTRAHEPATIC": "肝内",
+    "KIDNEY_LEFT": "左肾",
+    "KIDNEY_RIGHT": "右肾",
+    "BREAST_LEFT": "左乳腺",
+    "BREAST_RIGHT": "右乳腺"
+  },
+  "location_organs": {
+    "THYROID_RIGHT_LOBE": "THYROID",
+    "THYROID_LEFT_LOBE": "THYROID",
+    "LIVER_RIGHT_LOBE": "LIVER",
+    "LIVER_LEFT_LOBE": "LIVER",
+    "LIVER_INTRAHEPATIC": "LIVER",
+    "KIDNEY_LEFT": "KIDNEY",
+    "KIDNEY_RIGHT": "KIDNEY",
+    "BREAST_LEFT": "BREAST",
+    "BREAST_RIGHT": "BREAST"
+  },
+  "lesion_type_aliases": {
+    "甲状腺结节": "THYROID_NODULE",
+    "THYROID_NODULE": "THYROID_NODULE",
+    "肝结节": "LIVER_NODULE",
+    "肝占位": "LIVER_SPACE_OCCUPYING",
+    "LIVER_NODULE": "LIVER_NODULE",
+    "肾囊肿": "KIDNEY_CYST",
+    "KIDNEY_CYST": "KIDNEY_CYST",
+    "乳腺结节": "BREAST_NODULE",
+    "BREAST_NODULE": "BREAST_NODULE"
+  },
+  "organ_aliases": {
+    "甲状腺": "THYROID",
+    "THYROID": "THYROID",
+    "肝": "LIVER",
+    "肝脏": "LIVER",
+    "LIVER": "LIVER",
+    "肾": "KIDNEY",
+    "肾脏": "KIDNEY",
+    "KIDNEY": "KIDNEY",
+    "乳腺": "BREAST",
+    "BREAST": "BREAST"
+  },
+  "body_part_aliases": {
+    "颈部": "NECK",
+    "NECK": "NECK",
+    "腹部": "ABDOMEN",
+    "ABDOMEN": "ABDOMEN",
+    "泌尿系": "URINARY",
+    "乳腺及腋窝": "BREAST_AXILLA",
+    "双侧乳腺": "BREAST_AXILLA"
+  }
+}
