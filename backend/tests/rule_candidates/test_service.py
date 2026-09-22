@@ -67,12 +67,17 @@ def test_glucose_finding_generates_deduplicated_candidates(service: RuleCandidat
         include_drafts=True,
     )
     codes = [c.exam_code for c in result.candidates]
-    # 同一检查（空腹血糖 1558-6）触发两条规则 → 只计一次，依据合并
+    # 同一检查（空腹血糖 1558-6）被同组两条规则推荐 → 只计一次，只保留胜者依据
     assert codes.count("1558-6") == 1
     assert "4548-4" in codes
     glu = next(c for c in result.candidates if c.exam_code == "1558-6")
-    assert {b.rule_code for b in glu.bases} == {"RU-GLU-RECHECK", "RU-GLU-IFG-RECHECK"}
+    assert {b.rule_code for b in glu.bases} == {"RU-GLU-RECHECK"}, "冲突组败者依据必须移除"
     assert all("7.2" in r for r in glu.reasons)
+    # 败者留痕可追踪
+    assert any(
+        e.kind == "conflict_group" and e.rule_code == "RU-GLU-IFG-RECHECK"
+        for e in result.excluded
+    )
 
 
 def test_candidates_sorted_by_priority_then_code(service: RuleCandidateService) -> None:
@@ -159,6 +164,171 @@ def test_deterministic_output_same_input(service: RuleCandidateService) -> None:
     one = service.candidates(findings, include_drafts=True)
     two = service.candidates(list(reversed(findings)), include_drafts=True)
     assert one.as_dict() == two.as_dict()
+
+
+# ---- 冲突组败者必须真正退出候选（PR #24 P1） ----
+
+
+def conflict_rule(
+    code: str,
+    priority: int,
+    exams: tuple[str, ...],
+    condition: str,
+    *,
+    group: str = "G-TEST",
+    version: str = "1.0",
+) -> "RuleContentItem":
+    from app.rule_candidates import RuleContentItem
+
+    return RuleContentItem(
+        rule_code=code,
+        version=version,
+        priority=priority,
+        applies_to_condition=condition,
+        trigger_directions=("high",),
+        recommended_exam_codes=exams,
+        reason_template=f"{code} 触发（{{value}}）",
+        source="测试",
+        source_version="1.0",
+        status="enabled",
+        conflict_group=group,
+    )
+
+
+def test_conflict_group_loser_really_leaves_candidates() -> None:
+    """审查复现：A/B 同组，A 推荐 EXAM_A、B 推荐 EXAM_B，B 必须退出 candidates。"""
+    rules = [
+        conflict_rule("RU-A", 10, ("EXAM_A",), "C1"),
+        conflict_rule("RU-B", 20, ("EXAM_B",), "C2"),
+    ]
+    result = RuleCandidateService(rules).candidates(
+        [
+            finding("f1", "X1", "high", "C1", "条件一", "1"),
+            finding("f2", "X2", "high", "C2", "条件二", "2"),
+        ]
+    )
+    codes = [c.exam_code for c in result.candidates]
+    assert codes == ["EXAM_A"], "败者推荐项目不得留在候选中"
+    assert any(
+        e.kind == "conflict_group" and e.rule_code == "RU-B" and e.exam_code == "EXAM_B"
+        for e in result.excluded
+    )
+
+
+def test_conflict_group_shared_exam_keeps_loser_basis_out() -> None:
+    """同组两规则推荐同一检查：检查保留（胜者依据），败者依据不进入。"""
+    rules = [
+        conflict_rule("RU-A", 10, ("EXAM_SHARED",), "C1"),
+        conflict_rule("RU-B", 20, ("EXAM_SHARED",), "C2"),
+    ]
+    result = RuleCandidateService(rules).candidates(
+        [
+            finding("f1", "X1", "high", "C1", "条件一", "1"),
+            finding("f2", "X2", "high", "C2", "条件二", "2"),
+        ]
+    )
+    assert [c.exam_code for c in result.candidates] == ["EXAM_SHARED"]
+    shared = result.candidates[0]
+    assert {b.rule_code for b in shared.bases} == {"RU-A"}, "败者依据不得残留"
+    assert shared.priority == 10, "优先级须按剩余依据重算"
+
+
+def test_conflict_group_loser_exam_keeps_other_valid_rule_basis() -> None:
+    """败者推荐项目若另有其他有效规则推荐，依据保留并重算优先级。"""
+    rules = [
+        conflict_rule("RU-A", 10, ("EXAM_A",), "C1"),
+        conflict_rule("RU-B", 20, ("EXAM_A", "EXAM_B"), "C2"),
+        conflict_rule("RU-C", 30, ("EXAM_B",), "C3", group="G-OTHER"),
+    ]
+    result = RuleCandidateService(rules).candidates(
+        [
+            finding("f1", "X1", "high", "C1", "条件一", "1"),
+            finding("f2", "X2", "high", "C2", "条件二", "2"),
+            finding("f3", "X3", "high", "C3", "条件三", "3"),
+        ]
+    )
+    exam_b = next((c for c in result.candidates if c.exam_code == "EXAM_B"), None)
+    assert exam_b is not None, "EXAM_B 仍有 RU-C 依据，应保留为候选"
+    assert {b.rule_code for b in exam_b.bases} == {"RU-C"}
+    assert exam_b.priority == 30, "优先级须从 20（败者）重算为 30（RU-C）"
+
+
+def test_same_rule_from_multiple_findings_does_not_self_conflict() -> None:
+    """同一规则被多个 finding 触发，不得与自身冲突。"""
+    rules = [conflict_rule("RU-A", 10, ("EXAM_A",), "*", group="G-TEST")]
+    result = RuleCandidateService(rules).candidates(
+        [
+            finding("f1", "X1", "high", "C1", "条件一", "1"),
+            finding("f2", "X1", "high", "C1", "条件一", "1", "rec-2"),
+        ]
+    )
+    assert [c.exam_code for c in result.candidates] == ["EXAM_A"]
+    assert len(result.candidates[0].bases) == 2
+    assert not [e for e in result.excluded if e.kind == "conflict_group"]
+
+
+# ---- 年龄适用性：缺失即待确认（PR #24 P1） ----
+
+
+def age_rule(code: str, min_age: int | None, max_age: int | None) -> "RuleContentItem":
+    from app.rule_candidates import RuleContentItem
+
+    return RuleContentItem(
+        rule_code=code,
+        version="1.0",
+        priority=10,
+        applies_to_condition="C1",
+        trigger_directions=("high",),
+        recommended_exam_codes=(f"EXAM-{code}",),
+        reason_template=f"{code} 触发",
+        source="测试",
+        source_version="1.0",
+        status="enabled",
+        applies_min_age=min_age,
+        applies_max_age=max_age,
+    )
+
+
+def test_age_limited_rule_not_executed_when_age_unknown() -> None:
+    """审查复现：age=None + applies_min_age=50 不得产生候选。"""
+    result = RuleCandidateService([age_rule("RU-AGE", 50, None)]).candidates(
+        [finding("f1", "X1", "high", "C1", "条件一", "1")],
+        PatientContext(sex=None, age=None),
+    )
+    assert result.candidates == []
+    assert any(
+        e.kind == "applicability" and e.rule_code == "RU-AGE" for e in result.excluded
+    )
+    assert any("年龄" in m.prompt for m in result.missing_info)
+
+
+def test_age_limited_rule_applies_when_age_known_and_in_range() -> None:
+    result = RuleCandidateService([age_rule("RU-AGE", 50, 70)]).candidates(
+        [finding("f1", "X1", "high", "C1", "条件一", "1")],
+        PatientContext(sex=None, age=60),
+    )
+    assert [c.exam_code for c in result.candidates] == ["EXAM-RU-AGE"]
+    assert not [m for m in result.missing_info if "年龄" in m.prompt], "年龄已知不应提示缺失"
+
+
+def test_age_limited_rule_excluded_when_age_out_of_range() -> None:
+    result = RuleCandidateService([age_rule("RU-AGE", 50, 70)]).candidates(
+        [finding("f1", "X1", "high", "C1", "条件一", "1")],
+        PatientContext(sex=None, age=30),
+    )
+    assert result.candidates == []
+    excluded = [e for e in result.excluded if e.rule_code == "RU-AGE"]
+    assert excluded and "≥50 岁" in excluded[0].reason
+    assert not [m for m in result.missing_info if "年龄" in m.prompt]
+
+
+def test_rule_without_age_limit_needs_no_age() -> None:
+    rule = age_rule("RU-NOAGE", None, None)
+    result = RuleCandidateService([rule]).candidates(
+        [finding("f1", "X1", "high", "C1", "条件一", "1")], PatientContext(age=None)
+    )
+    assert [c.exam_code for c in result.candidates] == ["EXAM-RU-NOAGE"]
+    assert not [m for m in result.missing_info if "年龄" in m.prompt]
 
 
 def test_custom_rules_can_be_injected() -> None:

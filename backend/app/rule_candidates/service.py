@@ -66,32 +66,71 @@ class _Accumulator:
     def __init__(self) -> None:
         self.bases: dict[str, list[CandidateBase]] = {}
         self.priority: dict[str, int] = {}
+        self.rule_priority: dict[str, int] = {}
         self.conflict_hits: dict[str, list[RuleContentItem]] = {}
 
+    def remember_rule(self, rule: RuleContentItem) -> None:
+        """登记规则的优先级，供后续重算使用。"""
+        self.rule_priority[rule.rule_code] = rule.priority
+
     def add(self, rule: RuleContentItem, finding: NormalizedFinding) -> None:
+        base = CandidateBase(
+            rule_code=rule.rule_code,
+            rule_version=rule.version,
+            finding_id=finding.finding_id,
+            condition_code=finding.condition_code,
+            condition_name=finding.condition_name,
+            reason=rule.reason_template.format(
+                condition=finding.condition_name,
+                value=finding.value_text,
+                exam=finding.exam_code,
+            ),
+            source=rule.source,
+            source_version=rule.source_version,
+            review_status=rule.review_status,
+        )
         for exam_code in rule.recommended_exam_codes:
-            self.bases.setdefault(exam_code, []).append(
-                CandidateBase(
-                    rule_code=rule.rule_code,
-                    rule_version=rule.version,
-                    finding_id=finding.finding_id,
-                    condition_code=finding.condition_code,
-                    condition_name=finding.condition_name,
-                    reason=rule.reason_template.format(
-                        condition=finding.condition_name,
-                        value=finding.value_text,
-                        exam=finding.exam_code,
-                    ),
-                    source=rule.source,
-                    source_version=rule.source_version,
-                    review_status=rule.review_status,
-                )
-            )
-            current = self.priority.get(exam_code)
-            if current is None or rule.priority < current:
-                self.priority[exam_code] = rule.priority
-        if rule.conflict_group:
-            self.conflict_hits.setdefault(rule.conflict_group, []).append(rule)
+            self.bases.setdefault(exam_code, []).append(base)
+            self._recompute_priority(exam_code)
+
+    def remove_rule(self, exam_code: str, rule_code: str) -> list[CandidateBase]:
+        """移除某规则对某检查的全部依据，并重算该检查优先级。
+
+        返回被移除的依据，供调用方留痕。同检查若还有其他有效规则的依据，
+        候选保留并按剩余依据重算优先级；若依据清空，该检查退出候选
+        （PR #24 P1：冲突组败者必须真正退出，不能只看 excluded 列表）。
+        """
+        bases = self.bases.get(exam_code)
+        if not bases:
+            return []
+        removed = [b for b in bases if b.rule_code == rule_code]
+        if not removed:
+            return []
+        remaining = [b for b in bases if b.rule_code != rule_code]
+        if remaining:
+            self.bases[exam_code] = remaining
+        else:
+            self.bases.pop(exam_code, None)
+            self.priority.pop(exam_code, None)
+            return removed
+        self._recompute_priority(exam_code)
+        return removed
+
+    def _recompute_priority(self, exam_code: str) -> None:
+        """优先级取该检查剩余依据所对应规则的最高优先级。
+
+        优先级不能只取历史最小值：冲突组败者被移除后必须重算，
+        否则会留下已失效的优先级（PR #24 P1）。
+        """
+        priorities = [
+            self.rule_priority[base.rule_code]
+            for base in self.bases.get(exam_code, [])
+            if base.rule_code in self.rule_priority
+        ]
+        if priorities:
+            self.priority[exam_code] = min(priorities)
+        else:
+            self.priority.pop(exam_code, None)
 
     def hit_exam_codes(self, rule: RuleContentItem) -> list[str]:
         return [c for c in rule.recommended_exam_codes if c in self.bases]
@@ -136,7 +175,9 @@ class RuleCandidateService:
                 )
 
         accumulator = _Accumulator()
+        triggered_exam_codes: dict[str, set[str]] = {}
         for rule in sorted(active_rules, key=lambda r: (r.priority, r.rule_code, r.version)):
+            accumulator.remember_rule(rule)
             problem, missing = self._applicability_problem(rule, context)
             if missing:
                 result.missing_info.append(missing)
@@ -158,14 +199,18 @@ class RuleCandidateService:
                     triggered = True
                     accumulator.add(rule, finding)
 
-            if triggered and rule.missing_info_prompt:
-                result.missing_info.append(
-                    MissingInfoItem(
-                        prompt=rule.missing_info_prompt,
-                        related_code=rule.rule_code,
-                        reason="规则触发但所需项目/信息未登记",
+            if triggered:
+                triggered_exam_codes[rule.rule_code] = set(rule.recommended_exam_codes)
+                if rule.conflict_group:
+                    accumulator.conflict_hits.setdefault(rule.conflict_group, []).append(rule)
+                if rule.missing_info_prompt:
+                    result.missing_info.append(
+                        MissingInfoItem(
+                            prompt=rule.missing_info_prompt,
+                            related_code=rule.rule_code,
+                            reason="规则触发但所需项目/信息未登记",
+                        )
                     )
-                )
 
         # 发现方向未知 → 缺失信息提示
         for finding in findings:
@@ -178,17 +223,35 @@ class RuleCandidateService:
                     )
                 )
 
-        # 冲突组裁决：同组规则同时触发时保留最高优先级，其余排除
+        # 冲突组裁决：同组规则同时触发时保留最高优先级，其余**真正退出候选**
         for group, triggered_rules in sorted(accumulator.conflict_hits.items()):
             if len(triggered_rules) < 2:
                 continue
             ordered = sorted(triggered_rules, key=lambda r: (r.priority, r.rule_code))
             winner = ordered[0]
             for loser in ordered[1:]:
+                # 败者依据一律移除（即使检查被胜者保留，败者依据也不得残留），
+                # 移除后按该检查剩余依据重算优先级；若依据清空则整体退出候选。
+                removed_any = False
                 for exam_code in loser.recommended_exam_codes:
+                    removed = accumulator.remove_rule(exam_code, loser.rule_code)
+                    removed_any = removed_any or bool(removed)
                     result.excluded.append(
                         ExcludedItem(
                             exam_code=exam_code,
+                            rule_code=loser.rule_code,
+                            reason=(
+                                f"冲突组 {group}：与 {winner.rule_code} 同时触发，"
+                                "保留更高优先级规则；该规则对本次检查的依据已移除"
+                            ),
+                            kind="conflict_group",
+                        )
+                    )
+                if not removed_any:
+                    # 败者本次未产生依据（如仅由其他 finding 触发）：仅记排除留痕
+                    result.excluded.append(
+                        ExcludedItem(
+                            exam_code=loser.recommended_exam_codes[0],
                             rule_code=loser.rule_code,
                             reason=(
                                 f"冲突组 {group}：与 {winner.rule_code} 同时触发，"
@@ -240,9 +303,14 @@ class RuleCandidateService:
     def _applicability_problem(
         rule: RuleContentItem, context: PatientContext
     ) -> tuple[str | None, MissingInfoItem | None]:
+        """返回 (排除理由, 缺失信息提示)。
+
+        适用性判断遵循「缺失即待确认」：任何影响判定的缺失信息都返回 problem，
+        规则**不执行**，避免把不确定当作适用（PR #24 P1）。
+        """
         if rule.applies_sex and context.sex is None:
             return (
-                "性别缺失，无法判断适用性",
+                "性别缺失，无法判断适用性，待确认",
                 MissingInfoItem(
                     prompt=f"规则 {rule.rule_code} 需要性别信息才能判断适用性",
                     related_code=rule.rule_code,
@@ -251,18 +319,22 @@ class RuleCandidateService:
             )
         if rule.applies_sex and context.sex != rule.applies_sex:
             return (f"规则仅适用于 {'男性' if rule.applies_sex == 'male' else '女性'}", None)
-        if context.age is not None:
-            if rule.applies_min_age is not None and context.age < rule.applies_min_age:
-                return (f"规则仅适用于 ≥{rule.applies_min_age} 岁", None)
-            if rule.applies_max_age is not None and context.age > rule.applies_max_age:
-                return (f"规则仅适用于 ≤{rule.applies_max_age} 岁", None)
-        if rule.applies_min_age is not None or rule.applies_max_age is not None:
+
+        age_limited = rule.applies_min_age is not None or rule.applies_max_age is not None
+        if not age_limited:
+            return None, None
+
+        if context.age is None:
             return (
-                None,
+                "年龄缺失，无法判断适用性，待确认",
                 MissingInfoItem(
                     prompt=f"规则 {rule.rule_code} 需要年龄信息才能判断适用性",
                     related_code=rule.rule_code,
                     reason="patient age unknown",
                 ),
             )
+        if rule.applies_min_age is not None and context.age < rule.applies_min_age:
+            return (f"规则仅适用于 ≥{rule.applies_min_age} 岁", None)
+        if rule.applies_max_age is not None and context.age > rule.applies_max_age:
+            return (f"规则仅适用于 ≤{rule.applies_max_age} 岁", None)
         return None, None
