@@ -1,0 +1,153 @@
+{
+  "generated_at_utc": "2026-09-22T09:02:58+00:00",
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "ocr_engine": "rapidocr-onnxruntime",
+    "pdf_renderer": "pymupdf",
+    "versions": {
+      "pymupdf": "1.27.2.3",
+      "rapidocr_onnxruntime": "1.4.4",
+      "pypdf": "6.19.0"
+    }
+  },
+  "ground_truth": [
+    "Total Cholesterol 5.2 mmol/L",
+    "Fasting Glucose 6.1 mmol/L"
+  ],
+  "cases": [
+    {
+      "sample": "scan_2p.pdf",
+      "status": "ok",
+      "note": null,
+      "page_count": 2,
+      "pages": [
+        {
+          "page_no": 1,
+          "status": "ocr",
+          "reason": null
+        },
+        {
+          "page_no": 2,
+          "status": "ocr",
+          "reason": null
+        }
+      ],
+      "failed_pages": [],
+      "ocr_pages": [
+        1,
+        2
+      ],
+      "lines": [
+        {
+          "page_no": 1,
+          "line_no": 1,
+          "text": "Total Cholesterol 5.2 mmol/L"
+        },
+        {
+          "page_no": 1,
+          "line_no": 2,
+          "text": "Fasting Glucose 6.1 mmol/L"
+        },
+        {
+          "page_no": 2,
+          "line_no": 1,
+          "text": "Total Cholesterol 5.2 mmol/L"
+        },
+        {
+          "page_no": 2,
+          "line_no": 2,
+          "text": "Fasting Glucose 6.1 mmol/L"
+        }
+      ],
+      "seconds": 2.314
+    },
+    {
+      "sample": "mixed.pdf",
+      "status": "ok",
+      "note": null,
+      "page_count": 2,
+      "pages": [
+        {
+          "page_no": 1,
+          "status": "text_layer",
+          "reason": null
+        },
+        {
+          "page_no": 2,
+          "status": "ocr",
+          "reason": null
+        }
+      ],
+      "failed_pages": [],
+      "ocr_pages": [
+        2
+      ],
+      "lines": [
+        {
+          "page_no": 1,
+          "line_no": 1,
+          "text": "Lab Report WBC 6.2 10*9/L 3.5-9.5"
+        },
+        {
+          "page_no": 2,
+          "line_no": 1,
+          "text": "Total Cholesterol 5.2 mmol/L"
+        },
+        {
+          "page_no": 2,
+          "line_no": 2,
+          "text": "Fasting Glucose 6.1 mmol/L"
+        }
+      ],
+      "seconds": 0.688
+    },
+    {
+      "sample": "multi_3p.pdf",
+      "status": "partial",
+      "note": "第 3 页未能抽取，其余页结果可用；原因：ocr_empty_result",
+      "page_count": 3,
+      "pages": [
+        {
+          "page_no": 1,
+          "status": "text_layer",
+          "reason": null
+        },
+        {
+          "page_no": 2,
+          "status": "ocr",
+          "reason": null
+        },
+        {
+          "page_no": 3,
+          "status": "failed",
+          "reason": "ocr_empty_result"
+        }
+      ],
+      "failed_pages": [
+        3
+      ],
+      "ocr_pages": [
+        2
+      ],
+      "lines": [
+        {
+          "page_no": 1,
+          "line_no": 1,
+          "text": "Page one text layer"
+        },
+        {
+          "page_no": 2,
+          "line_no": 1,
+          "text": "Total Cholesterol 5.2 mmol/L"
+        },
+        {
+          "page_no": 2,
+          "line_no": 2,
+          "text": "Fasting Glucose 6.1 mmol/L"
+        }
+      ],
+      "seconds": 1.365
+    }
+  ]
+}
