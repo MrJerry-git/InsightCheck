@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes.admin import router as admin_router
 from app.api.routes.analyses import router as analyses_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.conversation import router as conversation_router
 from app.api.routes.crud import router as crud_router
 from app.api.routes.health import router as health_router
 from app.api.routes.import_tasks import router as import_tasks_router
@@ -23,6 +24,7 @@ api_router.include_router(auth_router)
 api_router.include_router(analyses_router)
 api_router.include_router(admin_router)
 api_router.include_router(plans_router)
+api_router.include_router(conversation_router)
 api_router.include_router(smart_import_router)
 api_router.include_router(prevention_router)
 api_router.include_router(health_router)

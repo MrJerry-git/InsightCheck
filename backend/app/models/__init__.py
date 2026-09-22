@@ -4,6 +4,15 @@ from app.models.analysis import AnalysisRun
 from app.models.audit import AuditEvent
 from app.models.auth import Account, AuthSession
 from app.models.base import Base
+from app.models.conversation import (
+    ActionLog,
+    ArchiveSnapshot,
+    ConversationMessage,
+    ConversationSession,
+    PendingAction,
+    Profile,
+    ProfileDraft,
+)
 from app.models.domain import (
     AIReport,
     ExamHistory,
@@ -30,6 +39,13 @@ from app.models.reporting import QaRecord, ReportEvidenceSnapshot, ReportExport
 
 __all__ = [
     "Account",
+    "ActionLog",
+    "ArchiveSnapshot",
+    "ConversationMessage",
+    "ConversationSession",
+    "PendingAction",
+    "Profile",
+    "ProfileDraft",
     "AIReport",
     "AnalysisRun",
     "AuditEvent",
