@@ -33,7 +33,10 @@ def serialize_run(db: Session, run: AnalysisRun) -> dict:
     patient = db.get(Patient, run.patient_id)
     stale = (
         patient is not None
-        and input_fingerprint(db, patient, run.as_of_date) != run.input_fingerprint
+        and input_fingerprint(
+            db, patient, run.as_of_date, finding_map_version=load_finding_map().version
+        )
+        != run.input_fingerprint
     )
     return {
         "run_id": run.id,
@@ -102,7 +105,12 @@ def list_analyses(
             "created_at": run.created_at,
             "status": run.status.value,
             "summary": run.summary or {},
-            "stale": input_fingerprint(db, db.get(Patient, run.patient_id), run.as_of_date)
+            "stale": input_fingerprint(
+                db,
+                db.get(Patient, run.patient_id),
+                run.as_of_date,
+                finding_map_version=load_finding_map().version,
+            )
             != run.input_fingerprint,
         }
         for run in runs

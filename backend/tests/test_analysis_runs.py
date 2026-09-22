@@ -357,3 +357,48 @@ def test_finding_map_endpoint_marks_unreviewed(test_app, db_session):
         assert body["reviewed"] is False
         assert body["version"]
         assert any(entry["finding_code"] == "LIVER_ENZYME_ABNORMAL" for entry in body["entries"])
+
+
+def test_finding_map_configuration_is_shipped_with_the_code():
+    """审核 P1：干净检出后 /analyses 必须能加载映射配置，不能依赖开发机文件。"""
+
+    from app.services.analysis.finding_map import MAP_PATH, load_finding_map
+
+    assert MAP_PATH.exists(), f"缺少已提交的映射配置：{MAP_PATH}"
+    assert MAP_PATH.parent.name == "data"
+    mapping = load_finding_map()
+    assert mapping.version
+    liver = mapping.rule("LIVER_ENZYME_ABNORMAL")
+    assert liver is not None and liver.exam_codes == ("LIVER_FUNCTION_PANEL",)
+    lung = mapping.rule("LUNG_NODULE")
+    assert lung is not None and "结节" in lung.lesion_keywords
+
+
+def test_patient_context_change_marks_analysis_stale(test_app, db_session):
+    """审核 P1：性别/出生日期影响适用规则，改了患者字段旧分析必须过期。"""
+
+    doctor = make_account(db_session, "doctor-a")
+    seed_catalog(db_session)
+    seed_dictionary(db_session, "ALT", "丙氨酸氨基转移酶")
+    patient = seed_patient(db_session, owner=doctor)
+    seed_abnormal_liver(db_session, patient)
+
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        run = client.post(
+            "/api/v1/analyses",
+            json={"patient_id": patient.id, "as_of_date": "2026-02-01"},
+            headers=headers,
+        ).json()
+        assert run["stale"] is False
+
+        patient.gender = Gender.FEMALE
+        patient.birth_date = date(1960, 5, 1)
+        db_session.commit()
+
+        refreshed = client.get(f"/api/v1/analyses/{run['run_id']}", headers=headers).json()
+        assert refreshed["stale"] is True
+        assert "重新分析" in refreshed["stale_reason"]
+        # 旧结果按原版本回看，不被患者字段修改改写。
+        assert refreshed["findings"] == run["findings"]
+        assert refreshed["input_fingerprint"] == run["input_fingerprint"]

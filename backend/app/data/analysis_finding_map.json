@@ -1,0 +1,69 @@
+{
+  "version": "analysis-finding-map-v1",
+  "generated_at": "2026-09-22",
+  "maintainer": "王天一（wangtianyipad-web），任务 T05",
+  "source": "工程映射：依据 docs/TEAM_TASKS_V2.md T05 与 H02 检查—发现关联目录的首批条目整理；不是医学结论，未经医学审核",
+  "review_status": "pending_review",
+  "scope_note": "发现→候选检查项目的工程映射。每条都带来源与版本；H02 目录接入后由该目录替换本文件。目录里不存在的检查项目不会被凭空生成，只记录为“目录缺少项目”。未登记的指标发现进入待映射队列，不自动生成候选。",
+  "entries": [
+    {
+      "finding_code": "LIVER_ENZYME_ABNORMAL",
+      "name": "肝酶异常",
+      "system": "肝胆",
+      "severity": "moderate",
+      "match": {
+        "metric_codes": ["ALT", "AST"],
+        "directions": ["high"]
+      },
+      "exam_codes": ["LIVER_FUNCTION_PANEL"],
+      "relation_type": "复查",
+      "note": "转氨酶升高提示肝细胞损伤可能，需结合病史复核并按临床判断复查肝功能。",
+      "source": "中国慢性乙型肝炎防治指南（2022年版）等公开指南的通用表述",
+      "source_version": "工程整理 v1"
+    },
+    {
+      "finding_code": "LIPID_ABNORMAL",
+      "name": "血脂异常",
+      "system": "心血管代谢",
+      "severity": "moderate",
+      "match": {
+        "metric_codes": ["TC", "TG", "LDL_C", "HDL_C"],
+        "directions": ["high", "low"]
+      },
+      "exam_codes": ["LIPID_PANEL"],
+      "relation_type": "复查",
+      "note": "血脂项超出合适范围提示血脂异常，需空腹复查并结合心血管风险分层。",
+      "source": "中国成人血脂异常防治指南（2016年修订版）",
+      "source_version": "2016"
+    },
+    {
+      "finding_code": "URINE_PROTEIN_POSITIVE",
+      "name": "尿蛋白阳性",
+      "system": "泌尿",
+      "severity": "moderate",
+      "match": {
+        "metric_codes": ["URINE_PROTEIN", "PRO_U"],
+        "directions": ["high"]
+      },
+      "exam_codes": ["URINE_ROUTINE"],
+      "relation_type": "复查",
+      "note": "尿蛋白定性阳性需复查尿常规并排除污染、运动与发热等干扰因素。",
+      "source": "KDIGO 慢性肾脏病评估与管理指南（2024）通用表述",
+      "source_version": "工程整理 v1"
+    },
+    {
+      "finding_code": "LUNG_NODULE",
+      "name": "肺结节",
+      "system": "呼吸",
+      "severity": "needs_review",
+      "match": {
+        "lesion_keywords": ["结节"]
+      },
+      "exam_codes": ["CHEST_CT"],
+      "relation_type": "随访",
+      "note": "报告中可追踪的肺结节按影像随访策略复查胸部 CT，具体间隔由医师按大小与形态判断。",
+      "source": "肺结节诊治中国专家共识（2018）通用表述",
+      "source_version": "工程整理 v1"
+    }
+  ]
+}

@@ -40,7 +40,7 @@ from app.services.analysis.findings import Finding, derive_findings
 from app.services.medical_rule_service import MedicalRuleEngineService
 
 PROVIDER_VERSION = "local-rules-v1"
-INPUT_VERSION = "confirmed-data-v1"
+INPUT_VERSION = "confirmed-data-v2"
 MISSING_WINDOW_MONTHS = 24
 
 DISCLOSURES = (
@@ -50,10 +50,25 @@ DISCLOSURES = (
 )
 
 
-def input_fingerprint(db: Session, patient: Patient, as_of_date: date) -> str:
-    """决策日期之前的已确认资料指纹；用于判断结果是否过期。"""
+def input_fingerprint(
+    db: Session,
+    patient: Patient,
+    as_of_date: date,
+    *,
+    finding_map_version: str | None = None,
+) -> str:
+    """决策日期之前的已确认资料指纹；用于判断结果是否过期。
 
-    chunks: list[str] = []
+    纳入患者上下文（性别、出生日期、身高）与映射版本：这些字段会改变
+    适用规则或候选来源，改了它们旧分析必须标为过期，而不是继续复用。
+    """
+
+    chunks: list[str] = [
+        f"input:{INPUT_VERSION}",
+        f"patient:{patient.id}:{patient.gender.value}:{patient.birth_date}:{patient.height}",
+    ]
+    if finding_map_version:
+        chunks.append(f"finding-map:{finding_map_version}")
     checks = db.scalars(
         select(HealthCheck)
         .where(HealthCheck.patient_id == patient.id, HealthCheck.check_date <= as_of_date)
@@ -78,7 +93,7 @@ def input_fingerprint(db: Session, patient: Patient, as_of_date: date) -> str:
         select(RiskPrediction).where(RiskPrediction.patient_id == patient.id)
     ).all():
         chunks.append(f"risk:{prediction.id}:{prediction.risk_code}:{prediction.probability}")
-    return sha256("|".join(chunks).encode("utf-8")).hexdigest()[:32] if chunks else "empty-input"
+    return sha256("|".join(chunks).encode("utf-8")).hexdigest()[:32]
 
 
 def missing_information(db: Session, patient: Patient, as_of_date: date) -> list[str]:
@@ -134,7 +149,9 @@ class AnalysisRunner:
                 if existing.patient_id != patient.id or existing.as_of_date != as_of_date:
                     raise ValueError("同一 request_id 对应不同档案或决策日期")
                 return existing
-        fingerprint = input_fingerprint(self.db, patient, as_of_date)
+        fingerprint = input_fingerprint(
+            self.db, patient, as_of_date, finding_map_version=self.finding_map.version
+        )
         run = AnalysisRun(
             patient_id=patient.id,
             as_of_date=as_of_date,
