@@ -241,3 +241,69 @@ def test_as_dict_roundtrip_fields(dictionary: ExamDictionary) -> None:
     assert payload["code"] == "1742-6"
     assert payload["reference_ranges"][0]["source"].startswith("WS/T 404-2012")
     assert payload["aliases"] == ["ALT", "谷丙转氨酶", "GPT"]
+
+
+# ---- 参考区间边界校验（审查 P2）：拒绝倒置、布尔与非有限值 ----
+
+def _entry_with_range(min_value: object, max_value: object) -> dict:
+    return {
+        "entries": [
+            {
+                "code": "IC:M-RANGE-CHECK",
+                "entry_kind": "metric",
+                "display_name": "参考区间校验条目",
+                "category": "extended",
+                "system": "general",
+                "value_type": "numeric",
+                "standard_unit": "mmol/L",
+                "reference_ranges": [
+                    {
+                        "population": "成人",
+                        "min_value": min_value,
+                        "max_value": max_value,
+                        "unit": "mmol/L",
+                        "source": "审查回归示例",
+                        "source_version": "1.0",
+                    }
+                ],
+                "source": "审查回归示例",
+                "source_version": "1.0",
+            }
+        ]
+    }
+
+
+def test_inverted_reference_range_is_rejected(tmp_path: Path) -> None:
+    bad = tmp_path / "inverted.json"
+    bad.write_text(json.dumps(_entry_with_range(10, 1), ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(DictionaryValidationError) as excinfo:
+        ExamDictionary.load_with_extensions([bad])
+    assert "min_value 不能大于 max_value" in str(excinfo.value)
+
+
+def test_boolean_reference_bound_is_rejected(tmp_path: Path) -> None:
+    bad = tmp_path / "bool.json"
+    bad.write_text(json.dumps(_entry_with_range(True, 6.1), ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(DictionaryValidationError) as excinfo:
+        ExamDictionary.load_with_extensions([bad])
+    assert "min_value 必须是有限数字或 null" in str(excinfo.value)
+
+
+def test_non_finite_reference_bound_is_rejected(tmp_path: Path) -> None:
+    import math
+
+    bad = tmp_path / "nan.json"
+    bad.write_text(json.dumps(_entry_with_range(float("nan"), 6.1), ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(DictionaryValidationError) as excinfo:
+        ExamDictionary.load_with_extensions([bad])
+    assert "min_value 必须是有限数字" in str(excinfo.value)
+
+
+def test_valid_reference_range_still_parses(tmp_path: Path) -> None:
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps(_entry_with_range(3.9, 6.1), ensure_ascii=False), encoding="utf-8")
+    merged = ExamDictionary.load_with_extensions([good])
+    entry = merged.lookup_by_code("IC:M-RANGE-CHECK")
+    assert entry is not None
+    assert entry.reference_ranges[0].min_value == 3.9
+    assert entry.reference_ranges[0].max_value == 6.1
