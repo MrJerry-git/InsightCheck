@@ -2,6 +2,7 @@ from app.models import Base, Patient
 
 EXPECTED_TABLES = {
     "accounts",
+    "analysis_runs",
     "auth_sessions",
     "prevention_reports",
     "ai_reports",
