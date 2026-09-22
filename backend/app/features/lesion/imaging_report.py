@@ -16,6 +16,13 @@ from app.features.lesion.schemas import LesionFeatureSchema
 
 IMAGING_PARSER_VERSION = "imaging-report-parser-v1"
 
+# 段落键名：_section_header 与 _split_sections 必须共用同一组常量，
+# 否则独占一行的段头会写入不存在的键并抛 KeyError（PR #23 P1）。
+SECTION_BODY = "body"
+SECTION_FINDINGS = "findings"
+SECTION_CONCLUSIONS = "conclusions"
+SECTION_KEYS = (SECTION_BODY, SECTION_FINDINGS, SECTION_CONCLUSIONS)
+
 _FINDING_HEADERS = ("影像所见", "超声所见", "检查所见", "所见")
 _CONCLUSION_HEADERS = ("影像结论", "超声提示", "诊断意见", "影像诊断", "结论")
 _EXAM_TYPE_KEYWORDS = ("超声", "彩超", "DR", "CT", "MRI", "磁共振", "钼靶", "X线")
@@ -85,8 +92,8 @@ class ImagingReportParser:
             source_name=source_name,
             exam_type=header.get("exam_type"),
             body_part=header.get("body_part"),
-            findings=[text for _, text in sections["findings"]],
-            conclusions=[text for _, text in sections["conclusions"]],
+            findings=[text for _, text in sections[SECTION_FINDINGS]],
+            conclusions=[text for _, text in sections[SECTION_CONCLUSIONS]],
             lesion_sentences=lesion_sentences,
             notes=self._notes(header, sections),
         )
@@ -116,19 +123,17 @@ class ImagingReportParser:
         self, cleaned: list[tuple[int, str]]
     ) -> dict[str, list[tuple[int, str]]]:
         sections: dict[str, list[tuple[int, str]]] = {
-            "body": [],
-            "findings": [],
-            "conclusions": [],
+            key: [] for key in SECTION_KEYS
         }
-        current = "body"
+        current = SECTION_BODY
         for line_no, text in cleaned:
             inline = _INLINE_HEADER_RE.match(text)
             if inline:
                 if inline.group(1):  # 所见类段头
-                    current = "findings"
+                    current = SECTION_FINDINGS
                     remainder = inline.group(2)
                 else:  # 结论类段头
-                    current = "conclusions"
+                    current = SECTION_CONCLUSIONS
                     remainder = inline.group(4)
                 remainder = remainder.strip()
                 if remainder:
@@ -146,9 +151,9 @@ class ImagingReportParser:
         if not cleaned or len(cleaned) > 12:
             return None
         if cleaned in _FINDING_HEADERS:
-            return "finding"
+            return SECTION_FINDINGS
         if cleaned in _CONCLUSION_HEADERS:
-            return "conclusion"
+            return SECTION_CONCLUSIONS
         return None
 
     # ---- 病灶句子 ----
@@ -157,7 +162,7 @@ class ImagingReportParser:
         self, sections: dict[str, list[tuple[int, str]]]
     ) -> list[LesionSentenceCandidate]:
         candidates: list[LesionSentenceCandidate] = []
-        for section in ("findings", "conclusions"):
+        for section in (SECTION_FINDINGS, SECTION_CONCLUSIONS):
             for line_no, text in sections[section]:
                 for sentence in _SENTENCE_SPLIT_RE.split(text):
                     sentence = sentence.strip()
@@ -199,6 +204,6 @@ class ImagingReportParser:
             notes.append("未识别检查类型，请人工校对")
         if header["body_part"] is None:
             notes.append("未识别检查部位，请人工校对")
-        if not sections["findings"] and not sections["conclusions"]:
+        if not sections[SECTION_FINDINGS] and not sections[SECTION_CONCLUSIONS]:
             notes.append("未识别所见/结论段落，全文按正文处理")
         return notes
