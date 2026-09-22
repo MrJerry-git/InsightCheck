@@ -9,9 +9,11 @@
 - `evaluated`：完成选型评估，尚未写适配器；
 - `not_started`：仅记录候选。
 
-> 状态口径说明：本清单以 **main 的真实状态**为准。某一分支上的适配器代码即使已提交，
-> 只要还没在真实引擎/凭据下运行过，一律记 `written`，并注明其所在 PR；
-> 只有 `integrated` 才是"可验收"的接入。相关 PR 尚有阻断问题时不予升格。
+> 状态口径说明：本清单以 **main 的真实状态**为准。
+> **只有已合入 main、且能在干净检出中运行的组件才记 `integrated`**；仍停留在未合并分支上的
+> 组件，即使已有真实运行记录，也一律记 `written`，并注明其所在 PR 与运行记录位置。
+> 相关 PR 尚有阻断问题时不予升格；#20/#26 需待其实际接入并与 T03/T10 接线确认后，
+> 再更新本清单的完成状态（见第七节）。
 
 ---
 
@@ -48,8 +50,8 @@
 
 | 组件 | 用途 | 许可 | 接入状态 | 说明 |
 | --- | --- | --- | --- | --- |
-| RapidOCR（`rapidocr-onnxruntime`） | 图片/扫描件 OCR | 代码 Apache-2.0；**模型权重随包分发，另适用其自身许可** | `integrated`（PR #20 `feat/report-extraction`） | `app/report_extraction/ocr.py` RapidOcrAdapter：延迟导入，未安装时 `is_available()=False` 并给出安装说明。**真实运行记录见第四节** |
-| PyMuPDF（`fitz`） | PDF 页栅格化（供 OCR 前处理） | **AGPL-3.0 或商业许可**（非宽松许可，需注意） | `integrated`（PR #20） | `app/report_extraction/render.py` PyMuPdfRenderer，dpi=200。**许可须在部署前按使用方式确认**（见第五节） |
+| RapidOCR（`rapidocr-onnxruntime`） | 图片/扫描件 OCR | 代码 Apache-2.0；**模型权重随包分发，另适用其自身许可** | `written`（PR #20 `feat/report-extraction`，未合并） | `app/report_extraction/ocr.py` RapidOcrAdapter：延迟导入，未安装时 `is_available()=False` 并给出安装说明。**真实运行记录见第四节** |
+| PyMuPDF（`fitz`） | PDF 页栅格化（供 OCR 前处理） | **AGPL-3.0 或商业许可**（非宽松许可，需注意） | `written`（PR #20，未合并） | `app/report_extraction/render.py` PyMuPdfRenderer，dpi=200。**许可须在部署前按使用方式确认**（见第五节） |
 | PaddleOCR | 备选 OCR | Apache-2.0 | `evaluated` | 模型与依赖较重（PaddlePaddle 运行时）；RapidOCR 满足需求时不引入 |
 | Tesseract（pytesseract） | 备选 OCR | 代码 Apache-2.0；语言包另计 | `evaluated` | 需系统级二进制安装，Windows 部署成本高；中文需额外语言包 |
 
