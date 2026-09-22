@@ -255,7 +255,7 @@ def test_unsupported_type_size_and_missing_file(test_app, db_session):
         unsupported = client.post(
             "/api/v1/imports/tasks",
             data={"patient_id": patient_id},
-            files={"file": ("report.xlsx", b"binary", "application/vnd.ms-excel")},
+            files={"file": ("report.bin", b"binary", "application/octet-stream")},
             headers=headers,
         )
         assert unsupported.status_code == 415
@@ -384,3 +384,101 @@ def test_service_confirm_is_transactional(db_session):
     assert db_session.scalars(select(HealthCheck)).all() == []
     assert db_session.scalars(select(LabMetric)).all() == []
     assert db_session.get(ImportTask, task.id).status is ImportTaskStatus.PREVIEW_READY
+
+
+def _xlsx_bytes(rows: list[list[object]]) -> bytes:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    for row in rows:
+        sheet.append(row)
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def test_excel_upload_is_parsed_like_csv(test_app, db_session):
+    """T03 复核（P1）：Excel 与 CSV 走同一套校对/入库链路，缺失单位先确认。"""
+
+    make_account(db_session, "doctor-a")
+    seed_dictionary(db_session)
+    content = _xlsx_bytes(
+        [
+            ["date", "metric_code", "original_name", "value", "unit", "reference_min",
+             "reference_max"],
+            ["2026-01-05", "ALT", "丙氨酸氨基转移酶", 35, "U/L", 0, 40],
+            ["2026-01-06", "ALT", "丙氨酸氨基转移酶", 42, None, 0, 40],
+            ["2026-01-07", "UNKNOWN_X", "未登记指标", 1.2, "mmol/L", None, None],
+        ]
+    )
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        response = client.post(
+            "/api/v1/imports/tasks",
+            data={"patient_id": patient_id},
+            files={
+                "file": (
+                    "report.xlsx",
+                    content,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert len(body["rows"]) == 3
+        assert body["rows"][0]["value"] == 35
+        assert body["rows"][0]["source_ref"] == "第 2 行"
+        missing_unit = [item["code"] for item in body["rows"][1]["issues"]]
+        assert "missing_unit" in missing_unit
+        unmapped = [item["code"] for item in body["rows"][2]["issues"]]
+        assert "unmapped_metric" in unmapped
+        # Excel 由哪个实现读取必须如实记录，不能默认宣称已接入 H03。
+        assert any("读取" in note for note in body["warnings"])
+        assert db_session.scalars(select(HealthCheck)).all() == []
+
+
+def test_excel_reader_prefers_h03_when_available(monkeypatch):
+    """H03 合并后应自动改用其 ``read_excel_rows``，契约一致时无需改 T03。"""
+
+    import sys
+    import types
+
+    from app.importing import tabular_source
+
+    assert tabular_source.excel_reader_name() == "t03:builtin-excel"
+
+    calls: list[bytes] = []
+
+    def fake_reader(content: bytes, sheet_index: int = 0):
+        calls.append(content)
+        return [{"date": "2026-01-05", "value": "1"}]
+
+    module = types.ModuleType("app.tabular_parsing")
+    module.read_excel_rows = fake_reader  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "app.tabular_parsing", module)
+
+    assert tabular_source.excel_reader_name() == "h03:app.tabular_parsing.read_excel_rows"
+    matrix = tabular_source.read_excel_matrix(b"fake")
+    assert calls == [b"fake"]
+    assert matrix == [["date", "value"], ["2026-01-05", "1"]]
+
+
+def test_unsupported_spreadsheet_suffix_is_rejected(test_app, db_session):
+    make_account(db_session, "doctor-a")
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        response = client.post(
+            "/api/v1/imports/tasks",
+            data={"patient_id": patient_id},
+            files={"file": ("legacy.xls", b"binary", "application/vnd.ms-excel")},
+            headers=headers,
+        )
+        assert response.status_code == 415
+        assert ".xls" in response.json()["detail"]["message"]

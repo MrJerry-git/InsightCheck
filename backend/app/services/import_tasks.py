@@ -12,9 +12,7 @@
 from __future__ import annotations
 
 import base64
-import csv
 import hashlib
-import io
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -26,12 +24,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.importing.tabular_source import (
+    EXCEL_SUFFIXES,
+    TabularSourceError,
+    excel_reader_name,
+    read_tabular_matrix,
+)
+from app.importing.tabular_source import (
+    TABULAR_SUFFIXES as TABULAR_SOURCE_SUFFIXES,
+)
 from app.models import HealthCheck, ImportTask, LabMetric, MetricDictionary, Patient
 from app.models.enums import ImportTaskStatus, MetricStatus, NormalizationStatus, ValueType
 from app.services.record_revisions import RecordRevisionService
 
 MAX_BYTES = 8 * 1024 * 1024
-TABULAR_SUFFIXES = frozenset({".csv", ".txt"})
+# CSV/TXT 与 Excel 都走表格解析；Excel 按 H03 契约读取（见 tabular_source）。
+TABULAR_SUFFIXES = TABULAR_SOURCE_SUFFIXES
 MODEL_SUFFIXES = frozenset({".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"})
 SUPPORTED_SUFFIXES = TABULAR_SUFFIXES | MODEL_SUFFIXES
 
@@ -177,7 +185,9 @@ class ImportTaskService:
         suffix = Path(filename).suffix.lower()
         if suffix not in SUPPORTED_SUFFIXES:
             raise ImportTaskError(
-                "支持 CSV/TXT、PDF、DOCX 与 PNG/JPEG/WebP 图片", status_code=415
+                "支持 CSV/TXT、Excel(.xlsx)、PDF、DOCX 与 PNG/JPEG/WebP 图片；"
+                "旧版 .xls 请先另存为 .xlsx",
+                status_code=415,
             )
         if not raw:
             raise ImportTaskError("文件为空", status_code=422)
@@ -252,18 +262,17 @@ class ImportTaskService:
         return Path(task.temporary_path).read_bytes()
 
     def _parse_tabular(self, task: ImportTask, raw: bytes) -> list[dict[str, Any]]:
+        suffix = Path(task.filename).suffix.lower()
         try:
-            text = raw.decode("utf-8-sig")
-        except UnicodeDecodeError as exc:
-            raise ImportTaskError("文件必须是 UTF-8 编码的 CSV 或 TXT") from exc
-        reader = csv.reader(io.StringIO(text))
-        rows = [row for row in reader if any(cell.strip() for cell in row)]
+            rows = read_tabular_matrix(raw, suffix)
+        except TabularSourceError as exc:
+            raise ImportTaskError(str(exc)) from exc
         if not rows:
             raise ImportTaskError("文件中没有可解析的数据行")
         header = [cell.strip().lower() for cell in rows[0]]
         if "date" not in header or "value" not in header:
             raise ImportTaskError(
-                "CSV/TXT 需要表头列：date,metric_code,original_name,value,unit,"
+                "CSV/TXT/Excel 需要表头列：date,metric_code,original_name,value,unit,"
                 "reference_min,reference_max"
             )
         index = {name: header.index(name) for name in TABULAR_COLUMNS if name in header}
@@ -282,6 +291,11 @@ class ImportTaskService:
             parsed.append(built)
         if not parsed:
             raise ImportTaskError("文件中没有可解析的数据行")
+        if suffix in EXCEL_SUFFIXES:
+            task.warnings = [
+                *task.warnings,
+                f"Excel 由 {excel_reader_name()} 读取；表头与单位仍需人工校对",
+            ]
         for position, row in enumerate(parsed, start=1):
             row["row_id"] = f"r{position}"
         return parsed
