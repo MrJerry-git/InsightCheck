@@ -305,6 +305,10 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
             ensure_patient_access(db, principal, entity_id)
         if is_patient_scoped(spec.model):
             get_visible_entity(db, spec.model, principal, entity_id)
+            # 也校验写入后的父级归属，防止把记录改挂到他人档案下。
+            ensure_patient_write_scope(
+                db, spec.model, principal, payload.model_dump(exclude_unset=True)
+            )
         try:
             return CrudService(db, spec.model).update(entity_id, payload)
         except (EntityConflictError, EntityNotFoundError) as exc:

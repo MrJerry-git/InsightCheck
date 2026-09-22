@@ -22,6 +22,7 @@ from app.models import (
     LesionTrack,
     Patient,
     Recommendation,
+    RecommendationItem,
     RiskPrediction,
 )
 from app.models.base import Base
@@ -38,9 +39,17 @@ DIRECT_PATIENT_MODELS: tuple[type[Base], ...] = (
 # 需要通过父表回溯到 patient 的业务表。
 BY_HEALTH_CHECK_MODELS: tuple[type[Base], ...] = (LabMetric, ImagingExam, ExamHistory)
 BY_LESION_TRACK_MODELS: tuple[type[Base], ...] = (LesionObservation,)
+# 推荐明细没有 patient_id，沿 recommendation_id → recommendations.patient_id 回溯父级归属。
+BY_RECOMMENDATION_MODELS: tuple[type[Base], ...] = (RecommendationItem,)
 
 PATIENT_SCOPE_MODELS: frozenset[type[Base]] = frozenset(
-    (*DIRECT_PATIENT_MODELS, *BY_HEALTH_CHECK_MODELS, *BY_LESION_TRACK_MODELS, Lesion)
+    (
+        *DIRECT_PATIENT_MODELS,
+        *BY_HEALTH_CHECK_MODELS,
+        *BY_LESION_TRACK_MODELS,
+        *BY_RECOMMENDATION_MODELS,
+        Lesion,
+    )
 )
 
 
@@ -59,6 +68,11 @@ def scope_statement(statement: Select, model: type[Base], principal: Principal) 
         statement = statement.join(
             LesionTrack, model.lesion_track_id == LesionTrack.id
         ).join(Patient, LesionTrack.patient_id == Patient.id)
+    elif model in BY_RECOMMENDATION_MODELS:
+        # 推荐明细必须沿父级方案校验归属，否则 /recommendation-items 可跨账号读写。
+        statement = statement.join(
+            Recommendation, model.recommendation_id == Recommendation.id
+        ).join(Patient, Recommendation.patient_id == Patient.id)
     elif model is Lesion:
         statement = (
             statement.join(ImagingExam, Lesion.imaging_exam_id == ImagingExam.id)
@@ -87,20 +101,27 @@ def get_visible_entity(
 def patient_id_for_values(db: Session, model: type[Base], values: dict[str, Any]) -> str | None:
     """从写入内容解析目标档案 ID；无法解析时返回 None，交给外键与校验处理。"""
 
+    def parent(model_type: type[Base], key: str) -> Base | None:
+        entity_id = values.get(key)
+        return None if entity_id is None else db.get(model_type, entity_id)
+
     if model in (HealthCheck, LesionTrack, Recommendation, RiskPrediction, AIReport):
         return values.get("patient_id")
     if model in (LabMetric, ImagingExam, ExamHistory):
-        check = db.get(HealthCheck, values.get("health_check_id"))
+        check = parent(HealthCheck, "health_check_id")
         return None if check is None else check.patient_id
     if model is Lesion:
-        exam = db.get(ImagingExam, values.get("imaging_exam_id"))
+        exam = parent(ImagingExam, "imaging_exam_id")
         if exam is None:
             return None
         check = db.get(HealthCheck, exam.health_check_id)
         return None if check is None else check.patient_id
     if model is LesionObservation:
-        track = db.get(LesionTrack, values.get("lesion_track_id"))
+        track = parent(LesionTrack, "lesion_track_id")
         return None if track is None else track.patient_id
+    if model in BY_RECOMMENDATION_MODELS:
+        recommendation = parent(Recommendation, "recommendation_id")
+        return None if recommendation is None else recommendation.patient_id
     return None
 
 
