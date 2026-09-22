@@ -12,7 +12,17 @@ import re
 from dataclasses import dataclass, field
 
 from app.core.versioning import PipelineVersions
-from app.llm.contracts import LLMResponse, PatientChatRequest, StructuredPatientContext
+from app.llm.citations import (
+    CitationBinding,
+    extract_inline_citations,
+    validate_citations,
+)
+from app.llm.contracts import (
+    EvidenceItem as StructuredEvidenceItem,
+    LLMResponse,
+    PatientChatRequest,
+    StructuredPatientContext,
+)
 from app.llm.provider import LLMProvider
 
 CITATION_RE = re.compile(r"\[EV:([A-Za-z0-9_\-\.]+)\]")
@@ -41,6 +51,20 @@ class QAContext:
     def evidence_ids(self) -> frozenset[str]:
         return frozenset(item.ref_id for item in self.findings)
 
+    def evidence_by_id(self) -> dict[str, EvidenceItem]:
+        return {item.ref_id: item for item in self.findings}
+
+    def record_ref_for(self, ref_id: str) -> str | None:
+        item = self.evidence_by_id().get(ref_id)
+        return item.record_ref if item else None
+
+    def citation_bindings(self) -> list[CitationBinding]:
+        """折算成共享校验链路使用的绑定结构（与 T10 同一入口）。"""
+        return [
+            CitationBinding(ref_id=i.ref_id, text=i.text, record_ref=i.record_ref)
+            for i in self.findings
+        ]
+
 
 @dataclass
 class QAAnswer:
@@ -54,6 +78,7 @@ class QAAnswer:
     citations: tuple[str, ...]
     invalid_citations_removed: tuple[str, ...] = ()
     plan_snapshot_ref: str | None = None
+    citation_records: tuple[tuple[str, str], ...] = ()
 
     def as_dict(self) -> dict:
         return {
@@ -65,6 +90,7 @@ class QAAnswer:
             "citations": list(self.citations),
             "invalid_citations_removed": list(self.invalid_citations_removed),
             "plan_snapshot_ref": self.plan_snapshot_ref,
+            "citation_records": [list(pair) for pair in self.citation_records],
         }
 
 
@@ -89,13 +115,28 @@ class QAService:
     # ---- 上下文转换 ----
 
     def _to_structured(self, context: QAContext) -> StructuredPatientContext:
+        """把只读上下文转成模型上下文：编号与正文**成对**下发。
+
+        PR #26 P1：旧实现只发 text 列表并把 evidence_refs 单独排序，
+        两处顺序不一致时模型无法判断哪段文字对应哪个编号，守卫也只
+        检查编号存在性。改为逐条绑定 (ref_id, text, record_ref)。
+        """
         findings = [item.text for item in context.findings]
         if context.plan_summary:
             findings.append(f"当前方案快照 {context.plan_snapshot_ref}：{context.plan_summary}")
+        evidence_items = [
+            StructuredEvidenceItem(
+                ref_id=item.ref_id,
+                text=item.text,
+                record_ref=item.record_ref,
+            )
+            for item in context.findings
+        ]
         return StructuredPatientContext(
             patient_id=context.patient_ref,
             normalized_findings=findings,
-            evidence_refs=sorted(context.evidence_ids()),
+            evidence_refs=[item.ref_id for item in context.findings],
+            evidence_items=evidence_items,
             versions=context.versions,
         )
 
@@ -104,24 +145,33 @@ class QAService:
     def _finalize(
         self, question: str, response: LLMResponse, context: QAContext
     ) -> QAAnswer:
-        valid_ids = context.evidence_ids()
-        cited = CITATION_RE.findall(response.content)
-        invalid = [ref for ref in dict.fromkeys(cited) if ref not in valid_ids]
+        """引用守卫：走共享校验链路（与 T10 判定口径一致）。"""
+        bindings = context.citation_bindings()
+        cited = extract_inline_citations(response.content)
+        verdict = validate_citations(cited, bindings, content=response.content)
+        invalid = verdict.rejected
+        by_id = context.evidence_by_id()
+
         content = response.content
         if invalid:
             for ref in invalid:
                 content = content.replace(f"[EV:{ref}]", "")
             content = (
                 content
-                + "\n（注意：回答中出现的不在证据列表内的引用已被移除，请人工核对原始记录）"
+                + "\n（注意：回答中出现的不在证据列表内或与所引编号不匹配的引用已被移除，"
+                "请人工核对原始记录）"
             )
+        citations = tuple(verdict.accepted)
         return QAAnswer(
             question=question,
             content=content,
             mode="model" if response.llm_model != "local-template" else "template",
             llm_model=response.llm_model,
             trace_id=response.trace_id,
-            citations=tuple(ref for ref in dict.fromkeys(cited) if ref in valid_ids),
+            citations=citations,
             invalid_citations_removed=tuple(invalid),
             plan_snapshot_ref=context.plan_snapshot_ref,
+            citation_records=tuple(
+                (ref, by_id[ref].record_ref) for ref in citations if ref in by_id
+            ),
         )
