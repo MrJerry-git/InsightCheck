@@ -21,7 +21,8 @@ T01—T12 已实现但尚未合并的分支能力，第 4 节是仍未实现的�
 cd backend && PYTHONPATH=. python -c "from app.main import create_app; print(len(create_app().openapi()['paths']))"
 ```
 
-结果：**51 条路径**（`main` 基线），清单见第 2 节。该清单里**没有** `/api/v1/auth/*`，配置中也没有
+结果：**51 条路径**（本契约起草时 `main`@`0e0fb01` 的基线；`main`@`092c40c` 已因 H01/H02/H09/H11
+合并变为 57 条），清单见第 2 节。该清单里**没有** `/api/v1/auth/*`，配置中也没有
 鉴权开关，`patients` 没有归属过滤——这些能力都在第 3 节列出的未合并分支里。
 合并 T01—T12 后为 **96 条路径**。
 
@@ -137,7 +138,7 @@ cd backend && PYTHONPATH=. python -c "from app.main import create_app; print(len
 | T12 | `feat/backend-integration` | 集成与联调 | 端到端测试与本文档更新 |
 | AI-T01—AI-T08 | `feat/conversational-import` | 参赛版对话式档案管理后端 | `/api/v1/prevention/conversation/*`（独立于 T 系列，PR #39） |
 
-合并后 `create_app().openapi()["paths"]` 为 **96 条路径**（当前 `main` 基线 51 条），
+合并后 `create_app().openapi()["paths"]` 为 **96 条路径**（起草基线 51 条；当前 `main`@`092c40c` 为 57 条），
 核对命令与第 0 节一致。
 
 ## 4. 计划中（仍未实现）
