@@ -2,7 +2,9 @@
 
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.models import (
     AuditEvent,
@@ -286,3 +288,142 @@ def test_audit_merges_admin_and_record_events(test_app, db_session):
         only_admin = client.get("/api/v1/admin/audit?source=admin", headers=admin).json()
         assert all(event["source"] == "admin" for event in only_admin["events"])
         assert len(db_session.query(AuditEvent).all()) >= 1
+
+
+def test_manual_mapping_converts_value_only_with_evidence(test_app, db_session):
+    """审核 P1：人工映射必须换算数值，不能只把单位标签改成标准单位。"""
+
+    from app.models import RecordRevision
+
+    doctor = make_account(db_session, "doctor-a")
+    make_account(db_session, "admin-a", role=AccountRole.ADMIN)
+    metric = seed_pending_metric(db_session, doctor)
+    metric.original_value = "100"
+    metric.value = 100.0
+    metric.original_unit = "mg/dL"
+    db_session.add(
+        MetricDictionary(
+            metric_code="GLU",
+            canonical_name="血糖",
+            aliases=[],
+            standard_unit="mmol/L",
+            category="代谢",
+            value_type=ValueType.NUMERIC,
+            unit_conversions={"mg/dL": {"factor": 0.0555, "offset": 0.0}},
+            source="目录来源",
+            version="v1",
+        )
+    )
+    db_session.commit()
+
+    with TestClient(test_app) as client:
+        admin = login(client, "admin-a", AccountRole.ADMIN)
+        applied = client.post(
+            "/api/v1/admin/metric-mapping",
+            json={"mappings": [{"metric_id": metric.id, "metric_code": "GLU"}]},
+            headers=admin,
+        )
+        assert applied.status_code == 200, applied.text
+        body = applied.json()
+        assert body["pending"] == []
+        assert body["mapped"][0]["standard_unit"] == "mmol/L"
+        db_session.refresh(metric)
+        # 100 mg/dL ≈ 5.55 mmol/L，不能被当成 100 mmol/L。
+        assert metric.value == pytest.approx(5.55, abs=0.001)
+        assert metric.standard_unit == "mmol/L"
+        assert metric.normalization_status is NormalizationStatus.NORMALIZED
+
+        revision = db_session.scalars(
+            select(RecordRevision)
+            .where(RecordRevision.entity_id == metric.id)
+            .order_by(RecordRevision.created_at.desc())
+        ).first()
+        assert revision is not None
+        # 数值与标准单位的变化都要进入修订，便于回溯"改标签不改数值"的问题。
+        assert {"value", "standard_unit"} <= set(revision.changed_fields)
+        assert revision.before["standard_unit"] is None
+        assert revision.after["standard_unit"] == "mmol/L"
+        assert revision.before["value"] == 100.0
+        assert revision.after["value"] == pytest.approx(5.55, abs=0.001)
+
+
+def test_manual_mapping_without_conversion_basis_stays_pending(test_app, db_session):
+    """审核 P1：缺单位或无法换算时必须保持待确认，不猜标准单位。"""
+
+    doctor = make_account(db_session, "doctor-a")
+    make_account(db_session, "admin-a", role=AccountRole.ADMIN)
+    metric = seed_pending_metric(db_session, doctor)
+    metric.original_value = "88"
+    metric.value = 88.0
+    metric.original_unit = "IU/L"
+    db_session.add(
+        MetricDictionary(
+            metric_code="ALT",
+            canonical_name="丙氨酸氨基转移酶",
+            aliases=[],
+            standard_unit="U/L",
+            category="肝肾功能及生化",
+            value_type=ValueType.NUMERIC,
+            unit_conversions={},
+            source="目录来源",
+            version="v1",
+        )
+    )
+    db_session.commit()
+
+    with TestClient(test_app) as client:
+        admin = login(client, "admin-a", AccountRole.ADMIN)
+        applied = client.post(
+            "/api/v1/admin/metric-mapping",
+            json={"mappings": [{"metric_id": metric.id, "metric_code": "ALT"}]},
+            headers=admin,
+        )
+        assert applied.status_code == 200, applied.text
+        body = applied.json()
+        assert body["mapped"] == []
+        assert body["pending"][0]["metric_id"] == metric.id
+        assert body["pending"][0]["normalization_status"] == "unsupported_unit"
+        db_session.refresh(metric)
+        # 保持原值、原单位与待映射状态，等人工确认单位口径。
+        assert metric.metric_code == "UNMAPPED"
+        assert metric.original_unit == "IU/L"
+        assert metric.standard_unit is None
+        assert metric.value == 88.0
+        assert metric.normalization_status is NormalizationStatus.UNSUPPORTED_UNIT
+
+
+def test_model_artifact_status_distinguishes_missing_and_broken(
+    monkeypatch, test_app, db_session, tmp_path
+):
+    """审核 P2：制品状态不能只看路径是否存在。"""
+
+    from app.services.model_status import artifact_status
+
+    make_account(db_session, "admin-a", role=AccountRole.ADMIN)
+    with TestClient(test_app) as client:
+        admin = login(client, "admin-a", AccountRole.ADMIN)
+
+        artifact_status.cache_clear()
+        monkeypatch.setattr(
+            "app.services.model_status.get_settings",
+            lambda: type("S", (), {"recommendation_artifact_path": str(tmp_path / "none.pt")})(),
+        )
+        missing = client.get("/api/v1/admin/model-tasks", headers=admin).json()
+        assert missing["artifact"]["state"] == "missing_file"
+        assert missing["tasks"][1]["status"] == "制品缺失"
+
+        broken_path = tmp_path / "broken.pt"
+        broken_path.write_bytes(b"not a model")
+        artifact_status.cache_clear()
+        monkeypatch.setattr(
+            "app.services.model_status.get_settings",
+            lambda: type("S", (), {"recommendation_artifact_path": str(broken_path)})(),
+        )
+        broken = client.get("/api/v1/admin/model-tasks", headers=admin).json()
+        assert broken["artifact"]["state"] == "load_error"
+        assert broken["tasks"][1]["status"] == "制品无法加载"
+        assert broken["tasks"][1]["artifact_state"] == "load_error"
+        # 注册表状态独立报告：制品可加载也不等于任务已接入。
+        assert broken["tasks"][1]["registry_status"] == "in_development"
+        assert broken["tasks"][1]["available"] is False
+        artifact_status.cache_clear()

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import Principal, get_db, require_admin
-from app.core.config import get_settings
+from app.features.metric_normalizer import MetricNormalizer
 from app.models import (
     ExamItem,
     ExamItemPriceRecord,
@@ -18,8 +18,11 @@ from app.models import (
     MedicalRule,
     MetricDictionary,
 )
+from app.models.enums import NormalizationStatus
 from app.rules.models import RuleAction, RuleType
+from app.schemas.domain import MetricNormalizationRequest
 from app.services.audit import AuditService
+from app.services.model_status import model_task_status
 from app.services.record_revisions import RecordRevisionService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -124,8 +127,10 @@ def apply_mapping(
     definitions = {
         item.metric_code: item for item in db.scalars(select(MetricDictionary)).all()
     }
+    normalizer = MetricNormalizer(definitions.values())
     revisions = RecordRevisionService(db)
     results: list[dict] = []
+    pending: list[dict] = []
     try:
         for entry in payload.mappings:
             metric = db.get(LabMetric, entry.get("metric_id"))
@@ -138,11 +143,49 @@ def apply_mapping(
             before = {
                 "metric_code": metric.metric_code,
                 "canonical_name": metric.canonical_name,
+                "original_unit": metric.original_unit,
+                "standard_unit": metric.standard_unit,
+                "value": metric.value,
             }
+            # 复用有依据的标准化逻辑：只有命中字典登记的换算依据才改写数值与单位，
+            # 否则保持待确认，绝不把原单位标签直接换成标准单位（审核 P1）。
+            normalized = normalizer.normalize(
+                MetricNormalizationRequest(
+                    original_name=definition.metric_code,
+                    original_value=metric.original_value,
+                    original_unit=metric.original_unit,
+                    reference_min=metric.reference_min,
+                    reference_max=metric.reference_max,
+                )
+            )
+            metric.normalization_status = normalized.normalization_status
+            metric.normalization_version = normalized.normalization_version
+            if normalized.normalization_status is not NormalizationStatus.NORMALIZED:
+                db.flush()
+                revisions.record(
+                    metric,
+                    action="update",
+                    before=before,
+                    source_kind="manual",
+                    source_ref="admin:metric-mapping",
+                    actor_account_id=principal.account_id,
+                    note="管理员人工映射未通过标准化校验，保持待确认",
+                )
+                pending.append(
+                    {
+                        "metric_id": metric.id,
+                        "requested_metric_code": definition.metric_code,
+                        "reason": "；".join(normalized.issues) or "单位/数值无法确认",
+                        "normalization_status": normalized.normalization_status.value,
+                    }
+                )
+                continue
             metric.metric_code = definition.metric_code
             metric.canonical_name = definition.canonical_name
-            if definition.standard_unit:
-                metric.standard_unit = definition.standard_unit
+            metric.value = normalized.value
+            metric.standard_unit = normalized.standard_unit
+            metric.reference_min = normalized.reference_min
+            metric.reference_max = normalized.reference_max
             db.flush()
             revisions.record(
                 metric,
@@ -153,14 +196,26 @@ def apply_mapping(
                 actor_account_id=principal.account_id,
                 note="管理员人工映射",
             )
-            results.append({"metric_id": metric.id, "metric_code": definition.metric_code})
+            results.append(
+                {
+                    "metric_id": metric.id,
+                    "metric_code": definition.metric_code,
+                    "original_unit": before["original_unit"],
+                    "standard_unit": metric.standard_unit,
+                    "value_before": before["value"],
+                    "value_after": metric.value,
+                }
+            )
         audit(
             db,
             principal,
             action="metric.mapped",
             entity_type="lab_metric",
-            summary=f"人工映射 {len(results)} 条待映射指标",
-            payload={"count": len(results)},
+            summary=(
+                f"人工映射 {len(results)} 条待映射指标"
+                + (f"，{len(pending)} 条因单位/数值无法确认保持待确认" if pending else "")
+            ),
+            payload={"count": len(results), "pending_count": len(pending)},
         )
         db.commit()
     except HTTPException:
@@ -169,7 +224,7 @@ def apply_mapping(
     except Exception:
         db.rollback()
         raise
-    return {"mapped": results}
+    return {"mapped": results, "pending": pending}
 
 
 # ---- 价格生效范围 ---------------------------------------------------------
@@ -411,10 +466,19 @@ def model_tasks(
 ):
     """模型任务注册状态：明确区分已接入/未接入，不把接口预留当成已接入。"""
 
-    settings = get_settings()
-    recommendation_ready = bool(settings.recommendation_artifact_path)
+    status = model_task_status()
+    artifact = status["artifact"]
+    ranking = status["ranking"]
+    artifact_labels = {
+        "unconfigured": "未接入",
+        "missing_file": "制品缺失",
+        "load_error": "制品无法加载",
+        "loadable": "制品可加载",
+    }
     return {
         "provider_version": "local-rules-v1",
+        "registry_version": status["registry_version"],
+        "artifact": artifact,
         "tasks": [
             {
                 "task": "disease_risk_models",
@@ -426,12 +490,19 @@ def model_tasks(
             {
                 "task": "deepfm_ranking",
                 "name": "DeepFM 学习排序",
-                "status": "制品可加载" if recommendation_ready else "未接入",
+                "status": artifact_labels[artifact["state"]],
                 "detail": (
-                    "已配置制品路径，可加载后替换推荐排序"
-                    if recommendation_ready
-                    else "未配置制品路径；当前按规则确定性排序，不影响规则推荐可用"
+                    f"{artifact['detail']}；H09 注册表状态 {ranking['registry_status']}"
+                    + (
+                        f"（{ranking['unavailable_reason']}）"
+                        if ranking["unavailable_reason"]
+                        else ""
+                    )
                 ),
+                "artifact_state": artifact["state"],
+                "registry_status": ranking["registry_status"],
+                "available": ranking["available"],
+                "unavailable_reason": ranking["unavailable_reason"],
                 "owner": "王宏锦",
             },
             {
