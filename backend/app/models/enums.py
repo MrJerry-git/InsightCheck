@@ -31,6 +31,14 @@ class MetricStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ValueType(StrEnum):
+    """指标值类型：数值走趋势图，定性与文字只做状态/原文对照。"""
+
+    NUMERIC = "numeric"
+    QUALITATIVE = "qualitative"
+    TEXT = "text"
+
+
 class NormalizationStatus(StrEnum):
     NORMALIZED = "normalized"
     UNMAPPED_METRIC = "unmapped_metric"

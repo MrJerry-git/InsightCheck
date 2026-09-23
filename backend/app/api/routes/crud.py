@@ -18,6 +18,7 @@ from app.api.ownership import (
     ensure_patient_write_scope,
     get_visible_entity,
     is_patient_scoped,
+    patient_id_for_values,
 )
 from app.models import (
     AIReport,
@@ -85,6 +86,7 @@ from app.schemas.domain import (
     RiskPredictionUpdate,
 )
 from app.services.crud import CrudService, EntityConflictError, EntityNotFoundError
+from app.services.record_revisions import RecordRevisionService, entity_type_of, snapshot
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,8 @@ class CrudSpec:
     read_schema: type[BaseModel]
     # 写入权限：目录类配置只有管理员能改；业务数据由写入角色维护，并按档案归属过滤。
     admin_only_write: bool = False
+    # 是否写入修订历史（T02）：目录类配置不记录，患者业务记录记录。
+    audit: bool = True
 
 
 CRUD_SPECS = (
@@ -200,6 +204,48 @@ CRUD_SPECS = (
 )
 
 
+def _write_revision(
+    db: Session,
+    model: type[Base],
+    entity: Any,
+    *,
+    action: str,
+    principal: Principal,
+    before: dict[str, Any] | None,
+) -> None:
+    """为业务记录写入一条修订历史；失败即回滚，避免出现没有历史的写入。"""
+
+    service = RecordRevisionService(db)
+    if action == "delete":
+        values = before or {}
+        service.record_deleted(
+            entity_type=entity_type_of(model),
+            entity_id=entity,
+            before=values,
+            patient_id=patient_id_for_values(db, model, values),
+            actor_account_id=principal.account_id,
+        )
+    else:
+        service.record(
+            entity,
+            action=action,
+            before=before,
+            source_kind=getattr(entity, "source_kind", "manual"),
+            source_ref=getattr(entity, "source_ref", None),
+            actor_account_id=principal.account_id,
+        )
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _selective_snapshot(db: Session, service: CrudService, entity_id: str) -> dict[str, Any] | None:
+    entity = service.repository.get(entity_id)
+    return None if entity is None else snapshot(entity)
+
+
 def _raise_http_error(exc: Exception) -> None:
     if isinstance(exc, EntityNotFoundError):
         raise HTTPException(status_code=404, detail="记录不存在") from exc
@@ -223,9 +269,13 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
             values["owner_account_id"] = principal.account_id
         ensure_patient_write_scope(db, spec.model, principal, values)
         try:
-            return CrudService(db, spec.model).create_values(values)
+            entity = CrudService(db, spec.model).create_values(values)
         except (EntityConflictError, EntityNotFoundError) as exc:
             _raise_http_error(exc)
+        _write_revision(
+            db, spec.model, entity, action="create", principal=principal, before=None
+        )
+        return entity
 
     create.__name__ = f"create_{spec.resource}"
     create.__annotations__["payload"] = spec.create_schema
@@ -309,10 +359,17 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
             ensure_patient_write_scope(
                 db, spec.model, principal, payload.model_dump(exclude_unset=True)
             )
+        service = CrudService(db, spec.model)
+        before = _selective_snapshot(db, service, entity_id) if spec.audit else None
         try:
-            return CrudService(db, spec.model).update(entity_id, payload)
+            entity = service.update(entity_id, payload)
         except (EntityConflictError, EntityNotFoundError) as exc:
             _raise_http_error(exc)
+        if spec.audit:
+            _write_revision(
+                db, spec.model, entity, action="update", principal=principal, before=before
+            )
+        return entity
 
     update_entity.__name__ = f"update_{spec.resource}"
     update_entity.__annotations__["payload"] = spec.update_schema
@@ -335,10 +392,16 @@ def build_crud_router(spec: CrudSpec) -> APIRouter:
             ensure_patient_access(db, principal, entity_id)
         if is_patient_scoped(spec.model):
             get_visible_entity(db, spec.model, principal, entity_id)
+        service = CrudService(db, spec.model)
+        before = _selective_snapshot(db, service, entity_id) if spec.audit else None
         try:
-            CrudService(db, spec.model).delete(entity_id)
+            service.delete(entity_id)
         except (EntityConflictError, EntityNotFoundError) as exc:
             _raise_http_error(exc)
+        if spec.audit and before is not None:
+            _write_revision(
+                db, spec.model, entity_id, action="delete", principal=principal, before=before
+            )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     delete_entity.__name__ = f"delete_{spec.resource}"

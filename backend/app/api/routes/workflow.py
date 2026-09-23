@@ -42,6 +42,7 @@ from app.rules.models import (
     RuleEvaluationRequest,
 )
 from app.services.medical_rule_service import MedicalRuleEngineService
+from app.services.record_revisions import RecordRevisionService
 from app.services.seed_service import DemoSeedService
 from app.services.workflow_models import VERSION, predict
 
@@ -89,27 +90,35 @@ def record(
         check_date=payload.check_date,
         is_demo=payload.is_demo,
         institution="工作台手工录入",
+        source_kind="manual",
+        source_ref="workflow/records",
     )
     try:
         db.add(check)
         db.flush()
+        revisions = RecordRevisionService(db)
+        revisions.record(check, action="create", actor_account_id=principal.account_id)
         for metric in payload.metrics:
             d = definitions[metric.code]
-            db.add(
-                LabMetric(
-                    health_check_id=check.id,
-                    metric_code=metric.code,
-                    original_name=d.canonical_name,
-                    canonical_name=d.canonical_name,
-                    original_value=str(metric.value),
-                    value=metric.value,
-                    original_unit=d.standard_unit,
-                    standard_unit=d.standard_unit,
-                    status=MetricStatus.UNKNOWN,
-                    normalization_status=NormalizationStatus.NORMALIZED,
-                    normalization_version="manual-standard-unit-v1",
-                )
+            metric_row = LabMetric(
+                health_check_id=check.id,
+                metric_code=metric.code,
+                original_name=d.canonical_name,
+                canonical_name=d.canonical_name,
+                original_value=str(metric.value),
+                value=metric.value,
+                original_unit=d.standard_unit,
+                standard_unit=d.standard_unit,
+                status=MetricStatus.UNKNOWN,
+                normalization_status=NormalizationStatus.NORMALIZED,
+                normalization_version="manual-standard-unit-v1",
+                value_type=d.value_type,
+                source_kind="manual",
+                source_ref="workflow/records",
             )
+            db.add(metric_row)
+            db.flush()
+            revisions.record(metric_row, action="create", actor_account_id=principal.account_id)
         db.commit()
     except Exception:
         db.rollback()

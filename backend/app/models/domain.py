@@ -33,6 +33,7 @@ from app.models.enums import (
     RecommendationDecision,
     RecommendationStatus,
     RuleAction,
+    ValueType,
 )
 
 
@@ -88,6 +89,14 @@ class HealthCheck(IdMixin, CreatedAtMixin, Base):
     check_date: Mapped[date] = mapped_column(Date, index=True)
     institution: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
+    # T02：来源与修订号；旧记录由迁移回填为 manual / 1，保持可读。
+    source_kind: Mapped[str] = mapped_column(
+        String(32), default="manual", server_default="manual", index=True
+    )
+    source_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    revision_no: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
 
     patient: Mapped[Patient] = relationship(back_populates="health_checks")
     lab_metrics: Mapped[list[LabMetric]] = relationship(
@@ -115,6 +124,9 @@ class MetricDictionary(IdMixin, CreatedAtMixin, Base):
     aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
     standard_unit: Mapped[str | None] = mapped_column(String(50), nullable=True)
     category: Mapped[str] = mapped_column(String(100), index=True)
+    value_type: Mapped[ValueType] = mapped_column(
+        enum_column(ValueType, "metric_value_type"), default=ValueType.NUMERIC
+    )
     unit_conversions: Mapped[dict[str, dict[str, float]]] = mapped_column(JSON, default=dict)
     valid_min: Mapped[float | None] = mapped_column(Float, nullable=True)
     valid_max: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -153,6 +165,18 @@ class LabMetric(IdMixin, CreatedAtMixin, Base):
         enum_column(NormalizationStatus, "normalization_status")
     )
     normalization_version: Mapped[str] = mapped_column(String(64))
+    # T02：值类型与定性结果。数值型继续用 value；定性与文字型保留原文，不做折线。
+    value_type: Mapped[ValueType] = mapped_column(
+        enum_column(ValueType, "lab_metric_value_type"), default=ValueType.NUMERIC
+    )
+    qualitative_value: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_kind: Mapped[str] = mapped_column(
+        String(32), default="manual", server_default="manual", index=True
+    )
+    source_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    revision_no: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
 
     health_check: Mapped[HealthCheck] = relationship(back_populates="lab_metrics")
 
@@ -168,6 +192,13 @@ class ImagingExam(IdMixin, CreatedAtMixin, Base):
     body_part: Mapped[str] = mapped_column(String(100), index=True)
     report_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     exam_date: Mapped[date] = mapped_column(Date)
+    source_kind: Mapped[str] = mapped_column(
+        String(32), default="manual", server_default="manual", index=True
+    )
+    source_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    revision_no: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
 
     health_check: Mapped[HealthCheck] = relationship(back_populates="imaging_exams")
     lesions: Mapped[list[Lesion]] = relationship(
