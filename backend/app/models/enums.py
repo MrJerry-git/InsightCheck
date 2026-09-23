@@ -8,6 +8,22 @@ class Gender(StrEnum):
     UNKNOWN = "unknown"
 
 
+class AccountRole(StrEnum):
+    """登录账号角色。只读角色不能修改业务数据，管理员另有管理接口权限。"""
+
+    ADMIN = "admin"
+    DOCTOR = "doctor"
+    VIEWER = "viewer"
+
+    @property
+    def can_write(self) -> bool:
+        return self is not AccountRole.VIEWER
+
+    @property
+    def can_manage(self) -> bool:
+        return self is AccountRole.ADMIN
+
+
 class MetricStatus(StrEnum):
     NORMAL = "normal"
     LOW = "low"
