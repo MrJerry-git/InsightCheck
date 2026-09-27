@@ -19,6 +19,7 @@ from app.models.domain import (
     RecommendationItem,
     RiskPrediction,
 )
+from app.models.import_tasks import ImportTask
 from app.models.imports import ImportBatch, ImportedRecord
 from app.models.pricing import ExamItemPriceRecord
 from app.models.records import RecordRevision
@@ -35,6 +36,7 @@ __all__ = [
     "ImagingExam",
     "ImportBatch",
     "ImportedRecord",
+    "ImportTask",
     "LabMetric",
     "Lesion",
     "LesionObservation",

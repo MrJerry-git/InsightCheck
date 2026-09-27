@@ -100,3 +100,14 @@ class AIReportType(StrEnum):
     HEALTH_SUMMARY = "health_summary"
     RECOMMENDATION_EXPLANATION = "recommendation_explanation"
     CHAT_SUMMARY = "chat_summary"
+
+
+class ImportTaskStatus(StrEnum):
+    """导入任务状态：上传 → 解析 → 待校对 → 已入库，失败与取消可追踪。"""
+
+    UPLOADED = "uploaded"
+    PARSING = "parsing"
+    PREVIEW_READY = "preview_ready"
+    FAILED = "failed"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"

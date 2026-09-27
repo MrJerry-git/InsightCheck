@@ -22,6 +22,7 @@ from app.models import (
     Lesion,
     LesionObservation,
     LesionTrack,
+    Patient,
     Recommendation,
     RecordRevision,
     RiskPrediction,
@@ -30,6 +31,7 @@ from app.models.base import Base
 
 # 记录修订的实体类型名（对外稳定，勿随类名变化）。
 REVISION_ENTITY_TYPES: dict[type[Base], str] = {
+    Patient: "patient",
     HealthCheck: "health_check",
     LabMetric: "lab_metric",
     ImagingExam: "imaging_exam",
@@ -75,6 +77,8 @@ def snapshot(entity: Base) -> dict[str, Any]:
 def patient_id_of(db: Session, entity: Base) -> str | None:
     """把业务记录回溯到档案 ID；无法回溯时返回 None。"""
 
+    if isinstance(entity, Patient):
+        return entity.id
     direct = getattr(entity, "patient_id", None)
     if direct is not None:
         return direct
