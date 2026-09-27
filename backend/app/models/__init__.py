@@ -22,6 +22,7 @@ from app.models.domain import (
 )
 from app.models.import_tasks import ImportTask
 from app.models.imports import ImportBatch, ImportedRecord
+from app.models.plans import Plan, PlanRevision
 from app.models.pricing import ExamItemPriceRecord
 from app.models.records import RecordRevision
 
@@ -46,6 +47,8 @@ __all__ = [
     "MedicalRule",
     "MetricDictionary",
     "Patient",
+    "Plan",
+    "PlanRevision",
     "Recommendation",
     "RecommendationItem",
     "RecordRevision",

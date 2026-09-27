@@ -21,6 +21,8 @@ EXPECTED_TABLES = {
     "medical_rules",
     "metric_dictionaries",
     "patients",
+    "plan_revisions",
+    "plans",
     "recommendation_items",
     "recommendations",
     "record_revisions",
