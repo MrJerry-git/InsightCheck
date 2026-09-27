@@ -10,6 +10,7 @@ from app.cross_system.schemas import (
     MissingUnitItem,
     NumericMetricSummary,
     Observation,
+    PendingUnitRecord,
     QualitativeMetricSummary,
     QualitativeTimelineEntry,
     SystemGroup,
@@ -110,7 +111,12 @@ class CrossSystemSummarizer:
         # 参与比较的观测：有可比较数值的记录。缺单位与单位不一致都必须判为
         # 不可比较，不能因为"过滤掉 None"而把缺单位记录当成同单位（PR #21 P1）。
         comparable_obs = [o for o in metric_obs if o.canonical_value is not None]
-        missing_unit_obs = [o for o in comparable_obs if not (o.unit or "").strip()]
+        # 待确认单位必须从**全部数值原记录**识别，而不是只看 comparable_obs：
+        # #19 对缺单位记录返回 canonical_value=None 但保留 raw_value，只从可比
+        # 记录派生会把它整个漏掉，AI 也就无从追问问单位（PR #21 复核 P1）。
+        missing_unit_obs = [
+            o for o in metric_obs if self._has_raw_numeric(o) and not (o.unit or "").strip()
+        ]
         units = {self._norm_unit(o.unit) for o in comparable_obs if (o.unit or "").strip()}
         unit_consistent = len(units) <= 1
 
@@ -136,7 +142,7 @@ class CrossSystemSummarizer:
         if missing_unit_obs:
             comparability = "missing_unit"
             reason = (
-                f"{len(missing_unit_obs)}/{len(comparable_obs)} 条记录缺少单位，"
+                f"{len(missing_unit_obs)}/{len(metric_obs)} 条记录缺少单位，"
                 "上游未完成有依据的标准化，不做跨记录趋势比较；"
                 "需人工确认单位后重算"
             )
@@ -174,18 +180,30 @@ class CrossSystemSummarizer:
     def _missing_unit_item(
         self, metric_obs: list[Observation], summary: NumericMetricSummary
     ) -> MissingUnitItem:
-        """缺单位登记：保留时间线与记录引用，供对话式追问补齐。"""
+        """缺单位登记：保留原值/日期/来源，供对话式追问补齐。
+
+        记录可能没有可比较数值（canonical_value=None），但只要原始数值存在
+        就要登记，不能要求它先有可比较数值（PR #21 复核 P1）。
+        """
         refs = set(summary.missing_unit_refs)
+        records = tuple(
+            PendingUnitRecord(
+                record_ref=o.record_ref,
+                observed_at=o.observed_at,
+                raw_value=(o.raw_value or "").strip(),
+            )
+            for o in sorted(
+                (o for o in metric_obs if o.record_ref in refs),
+                key=lambda o: o.observed_at,
+            )
+        )
         return MissingUnitItem(
             metric_code=summary.metric_code,
             display_name=summary.display_name,
-            record_refs=tuple(summary.missing_unit_refs),
-            observed_at=tuple(
-                o.observed_at for o in metric_obs if o.record_ref in refs
-            ),
+            records=records,
             question=(
                 f"{summary.display_name}（{summary.metric_code}）有 "
-                f"{len(refs)} 条记录缺少单位，请确认单位后再比较趋势"
+                f"{len(records)} 条记录缺少单位，请确认单位后再比较趋势"
             ),
         )
 
@@ -322,6 +340,15 @@ class CrossSystemSummarizer:
         )
 
     # ---- 工具 ----
+
+    @staticmethod
+    def _has_raw_numeric(obs: Observation) -> bool:
+        """该数值观测是否携带原始数值（可比较值或原始文本其一存在即可）。
+
+        用于识别"有数值但缺单位"的记录：这类记录经 #19 标准化后
+        canonical_value 可能为 None，但 raw_value 仍保留。
+        """
+        return obs.canonical_value is not None or bool((obs.raw_value or "").strip())
 
     def _norm_unit(self, unit: str | None) -> str:
         return (unit or "").strip().lower()

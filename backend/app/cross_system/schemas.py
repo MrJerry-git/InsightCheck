@@ -229,14 +229,44 @@ class SystemGroup:
 
 
 @dataclass(frozen=True)
+class PendingUnitRecord:
+    """待确认单位的单条记录：保留原值/日期/来源，供 AI 与人工追问补齐。
+
+    该记录可能没有可比较数值（#19 对缺单位记录返回 canonical_value=None），
+    但**原始数值与来源必须保留**，否则下游无从追问（PR #21 复核 P1）。
+    """
+
+    record_ref: str
+    observed_at: date
+    raw_value: str
+
+    def as_dict(self) -> dict:
+        return {
+            "record_ref": self.record_ref,
+            "observed_at": self.observed_at.isoformat(),
+            "raw_value": self.raw_value,
+        }
+
+
+@dataclass(frozen=True)
 class MissingUnitItem:
-    """缺单位登记项：保留时间线与记录引用，供对话式追问补齐（PR #21 P1）。"""
+    """缺单位登记项：保留原值/日期/来源，供对话式追问补齐（PR #21 P1）。
+
+    记录来源是**全部数值原记录**，不要求它先有可比较数值（PR #21 复核 P1）。
+    """
 
     metric_code: str
     display_name: str
-    record_refs: tuple[str, ...]
-    observed_at: tuple[date, ...]
+    records: tuple[PendingUnitRecord, ...]
     question: str
+
+    @property
+    def record_refs(self) -> tuple[str, ...]:
+        return tuple(r.record_ref for r in self.records)
+
+    @property
+    def observed_at(self) -> tuple[date, ...]:
+        return tuple(r.observed_at for r in self.records)
 
     def as_dict(self) -> dict:
         return {
@@ -244,6 +274,7 @@ class MissingUnitItem:
             "display_name": self.display_name,
             "record_refs": list(self.record_refs),
             "observed_at": [d.isoformat() for d in self.observed_at],
+            "records": [r.as_dict() for r in self.records],
             "question": self.question,
         }
 
