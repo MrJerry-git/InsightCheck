@@ -26,7 +26,6 @@ import pytest
 
 from app.cross_system import CrossSystemSummarizer, Observation
 from app.exam_dictionary import (
-    FindingCatalog,
     load_builtin_associations,
     load_builtin_catalog,
 )
@@ -197,20 +196,25 @@ def to_proofread_queue(report) -> list[ProofreadItem]:
 
     审查要求「无法计算应明确传至页面」：这里把每个条目分成
     computable=True（可进入分析）与 False（必须显式告知页面的原因）。
+
+    判定以 **H03 的状态机**为准：`#19` 已合入 main，有量纲但缺单位的记录被标
+    `unit_missing` 且不再赋标准单位，因此这里可以（也必须）把它判为不可计算。
     """
     items: list[ProofreadItem] = []
     for entry in report.entries:
         reason = None
         if entry.canonical_code is None:
             reason = "未登记指标，无标准编码，无法参与分析"
+        elif entry.status == "unit_missing":
+            reason = "有量纲但缺单位，标准值不可确定，需人工确认后重算"
         elif entry.status == "unit_unconverted":
             reason = "单位无法换算，标准值不可确定"
-        elif entry.value_type == "numeric" and not (entry.canonical_unit or "").strip():
-            reason = "有量纲但缺单位，标准值不可确定，需人工确认后重算"
+        elif entry.status == "invalid_value":
+            reason = "数值无法解析（原值已保留）"
         elif entry.status == "unregistered_qualitative":
             reason = "定性取值未登记，无法判定"
-        elif entry.canonical_value is None and entry.value_type == "numeric":
-            reason = "数值无法解析"
+        elif entry.value_type == "numeric" and entry.canonical_value is None:
+            reason = "数值为空，无可比较值"
         computable = reason is None
         items.append(
             ProofreadItem(
@@ -227,10 +231,8 @@ def to_proofread_queue(report) -> list[ProofreadItem]:
 def test_proofread_queue_separates_computable_from_not(tmp_path: Path) -> None:
     """缺单位 / 未知指标 → computable=False 且带明确原因（不是静默丢弃）。
 
-    注意：本分支合并的 #19 仍是修复前版本——有量纲但缺单位时会被直接赋上
-    标准单位（HGB 13.5 被当成 13.5 g/L），因此这里**不**断言该行不可计算；
-    该缺陷已由 #19 的修复（`unit_missing` 状态 + `unit_confirmation_required`）
-    处理，修复分支合入后本测试应同步收紧为 `computable is False`。
+    `#19` 已合入 main：有量纲但缺单位时标 `unit_missing` 且**不再赋标准单位**，
+    因此这里断言该行不可计算（旧分支上这条断言被显式放宽，现已收紧）。
     """
     from app.tabular_parsing import TabularReportParser
 
@@ -245,6 +247,20 @@ def test_proofread_queue_separates_computable_from_not(tmp_path: Path) -> None:
     assert all("未登记指标" in (i.reason or "") for i in blocked)
     assert len(unknown_queue) == len(unknown.entries), "不可计算项也必须出现在页面上"
 
+    # 有量纲但缺单位（#19 已合入）：必须不可计算，且给出缺单位原因
+    missing_unit = parser.parse(
+        "missing_unit.csv",
+        [{"项目": "血红蛋白", "结果": "13.5", "单位": "", "参考区间": "131-172"}],
+    )
+    entry = missing_unit.entries[0]
+    assert entry.status == "unit_missing", "缺单位必须标 unit_missing（不赋标准单位）"
+    assert entry.canonical_value is None
+    assert entry.raw_value == "13.5", "原值必须保留"
+    assert entry.unit_confirmation_required is True
+    queue = to_proofread_queue(missing_unit)
+    assert queue[0].computable is False
+    assert "缺单位" in (queue[0].reason or "")
+
     # 单位无法换算：同样不可计算
     unconverted = parser.parse(
         "unit.csv",
@@ -252,8 +268,8 @@ def test_proofread_queue_separates_computable_from_not(tmp_path: Path) -> None:
     )
     queue = to_proofread_queue(unconverted)
     assert queue, "条目必须保留"
-    if queue[0].computable is False:
-        assert "单位" in (queue[0].reason or "")
+    assert queue[0].computable is False
+    assert "单位" in (queue[0].reason or "")
 
 
 # ===================== 三、分析 → 候选 → 方案 =====================
@@ -612,3 +628,271 @@ def test_proofread_locator_preserved_for_traceback(parser) -> None:
     """校对条目保留原始定位（行号），供人工回溯原件。"""
     report = parse_real_csv(FIXTURES / "h12_blood_routine.csv", parser)
     assert all(entry.row_index >= 1 for entry in report.entries)
+
+
+# ============ 六、H04→T03→H03→H05/H07→分析/方案（真实 OCR 引擎 vs 模拟） ============
+#
+# PR #29 复核要求：补 H03/H04→T03→H05/H07→分析/方案的真实接口回归，并**注明哪些
+# 测试用了真实引擎、哪些是模拟**。本节的区分如下：
+#
+# - `test_real_ocr_engine_to_plan_chain`（**真实引擎**）：
+#   pypdfium2 渲染 + rapidocr-onnxruntime OCR；扫描件由 Pillow 绘制后嵌入 PDF
+#   （无文本层）→真实逐页 OCR；引擎或中文字体缺失时显式 skip。
+# - `test_mock_ocr_engine_to_plan_chain`（**模拟引擎**）：
+#   FakeOcr + FakeRenderer 保证链路形状在无引擎环境也可回归。
+#
+# 两段的**下游**都是真实模块（H01 字典、H03 解析、H05 汇总、H02 关联、H07 候选、
+# PlanBuilder），只有"图像→文本"这一步在模拟用例里被替换。
+
+_ZH_LINES = ["血常规检验报告", "血红蛋白 135 g/L", "空腹血糖 6.8 mmol/L", "尿酸 520 umol/L"]
+_CJK_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/SimHei.ttf",
+    "C:/Windows/Fonts/simsun.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+)
+
+
+def _cjk_font(size: int = 40):
+    """加载系统中文字体；找不到返回 None（真实引擎用例显式 skip）。"""
+    import os
+
+    from PIL import ImageFont
+
+    for path in _CJK_FONT_CANDIDATES:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return None
+
+
+def _scanned_pdf(lines: list[str], font) -> bytes:
+    """Pillow 画图 → 以 FlateDecode 原始 RGB 嵌入最小 PDF（**无文本层**）。
+
+    手写 PDF 结构，不依赖 PyMuPDF；图片页天然没有文本层，等价扫描件。
+    """
+    import zlib
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1200, 520), "white")
+    ImageDraw.Draw(image).multiline_text((40, 40), "\n".join(lines), fill="black", font=font,
+                                         spacing=26)
+    width, height = image.size
+    payload = zlib.compress(image.convert("RGB").tobytes(), 9)
+    content = f"q {width} 0 0 {height} 0 0 cm /Im0 Do Q".encode()
+
+    def stream(body: bytes) -> bytes:
+        return b"<< /Length " + str(len(body)).encode() + b" >>\nstream\n" + body + b"\nendstream"
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+        + f"{width} {height}".encode()
+        + b"] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+        stream(content),
+        (
+            f"<< /Type /XObject /Subtype /Image /Width {width} /Height {height} "
+            f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode "
+            f"/Length {len(payload)} >>\nstream\n"
+        ).encode()
+        + payload
+        + b"\nendstream",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{index} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref_at = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets[1:]:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_at}\n%%EOF\n"
+    ).encode()
+    return bytes(out)
+
+
+def ocr_lines_to_rows(lines: list[str]) -> list[dict[str, str]]:
+    """OCR 文本行 → H03 可解析的表格行（T03 的"文本→行"编排步骤）。
+
+    OCR 会归一化掉行内空格（例：`血红蛋白135g/L`），因此按
+    「中文名称 + 数值 + 单位」正则切分，而不是按空格切分。
+    """
+    import re
+
+    pattern = re.compile(r"^([\u4e00-\u9fff]+)\s*([+-]?\d+(?:\.\d+)?)\s*([A-Za-z/%*^0-9]*)$")
+    rows: list[dict[str, str]] = []
+    for line in lines:
+        match = pattern.match(line.strip())
+        if not match:
+            continue
+        name, value, unit = match.groups()
+        rows.append({"项目": name, "结果": value, "单位": unit, "参考区间": ""})
+    return rows
+
+
+_REFERENCES = {
+    "718-7": (131.0, 172.0),   # 血红蛋白 g/L
+    "1558-6": (3.9, 6.1),      # 空腹血糖 mmol/L
+    "3084-1": (208.0, 428.0),  # 尿酸 μmol/L
+}
+
+
+def chain_from_rows(rows, dictionary, catalog, source_name: str) -> dict:
+    """行 → H03 解析 → H05 分析 → H02 关联 → H07 候选 → 三档方案。"""
+    report = TabularReportParser(dictionary).parse(source_name, rows)
+    queue = to_proofread_queue(report)
+
+    observations = build_observations(report, date(2026, 7, 1), dictionary)
+    for observation in observations:
+        bounds = _REFERENCES.get(observation.metric_code)
+        if bounds:
+            with_reference(observation, bounds[0], bounds[1])
+    summary = CrossSystemSummarizer().summarize(observations, as_of=AS_OF)
+
+    findings: list[NormalizedFinding] = []
+    for item in summary.abnormalities:
+        for association in catalog.associations_for_exam(item.metric_code):
+            if association.direction not in ("any", item.direction):
+                continue
+            findings.append(
+                NormalizedFinding(
+                    finding_id=f"{item.record_ref}:{association.association_id}",
+                    exam_code=item.metric_code,
+                    direction=item.direction,
+                    condition_code=association.condition_code,
+                    condition_name=association.condition_name,
+                    value_text=item.value_text,
+                    record_ref=item.record_ref,
+                    observed_at=item.observed_at,
+                )
+            )
+    rules = load_rule_content()
+    enabled = [rule.__class__(**{**rule.__dict__, "status": "enabled"}) for rule in rules]
+    result = RuleCandidateService(enabled).candidates(
+        findings, PatientContext(sex="male", age=45)
+    )
+    plan = PlanBuilder().build(
+        PlanBuildRequest(
+            trace_id=f"h12-ocr-{source_name}",
+            patient_id="P-H12-OCR",
+            as_of_date=AS_OF,
+            candidates=to_plan_candidates(result.candidates, EXAM_NAMES),
+            budget=BudgetSpec(limit_cents=500_000, currency="CNY"),
+            tiers=(PlanTier.SIMPLIFIED, PlanTier.STANDARD, PlanTier.DEEP),
+        )
+    )
+    return {
+        "report": report,
+        "queue": queue,
+        "summary": summary,
+        "findings": findings,
+        "candidates": result.candidates,
+        "plan": plan,
+    }
+
+
+def _assert_ocr_chain(chain: dict) -> None:
+    """真实引擎与模拟引擎共用的链路断言。"""
+    entries = {e.canonical_code: e for e in chain["report"].entries}
+    assert "718-7" in entries, "血红蛋白应被 H03 映射到 718-7"
+    assert "1558-6" in entries, "空腹血糖应被 H03 映射到 1558-6"
+    assert entries["1558-6"].canonical_unit == "mmol/L"
+    assert all(item.computable for item in chain["queue"]), "OCR 行应全部可计算"
+
+    directions = {a.metric_code: a.direction for a in chain["summary"].abnormalities}
+    assert directions.get("1558-6") == "high", "空腹血糖 6.8 应判为偏高"
+    assert directions.get("3084-1") == "high", "尿酸 520 应判为偏高"
+
+    assert chain["findings"], "H05 异常应命中 H02 关联"
+    codes = [c.exam_code for c in chain["candidates"]]
+    assert "4548-4" in codes, "血糖升高应生成糖化血红蛋白复查候选"
+
+    selected = {item.code for tier in chain["plan"].tiers for item in tier.items}
+    assert selected, "方案必须选中项目"
+    by_tier = {t.tier: {i.code for i in t.items} for t in chain["plan"].tiers}
+    assert by_tier[PlanTier.SIMPLIFIED] <= by_tier[PlanTier.STANDARD]
+    assert by_tier[PlanTier.STANDARD] <= by_tier[PlanTier.DEEP]
+
+
+def test_real_ocr_engine_to_plan_chain(dictionary, catalog) -> None:
+    """**真实引擎**：扫描件 PDF → 真实逐页 OCR → T03 行 → H03 → H05/H07 → 方案。
+
+    引擎（pypdfium2 + rapidocr-onnxruntime）或系统中文字体缺失时**显式 skip**，
+    不假装通过；真实运行记录另见 PR #20 的 `docs/ocr-run-record.json`。
+    """
+    from app.report_extraction import RapidOcrAdapter, ReportTextExtractor, default_renderer
+
+    ocr = RapidOcrAdapter()
+    renderer = default_renderer()
+    if not ocr.is_available() or not renderer.is_available():
+        pytest.skip("未安装 pypdfium2 / rapidocr-onnxruntime，跳过真实 OCR 引擎测试")
+    font = _cjk_font()
+    if font is None:
+        pytest.skip("系统无可用中文字体，跳过真实 OCR 引擎测试")
+
+    pdf = _scanned_pdf(_ZH_LINES, font)
+    document = ReportTextExtractor(ocr_engine=ocr, pdf_renderer=renderer).extract(
+        "scan_zh.pdf", pdf, ".pdf"
+    )
+    assert document.status == "ok", document.note
+    assert document.pages[0].status == "ocr", "扫描页必须走 OCR 分支"
+
+    rows = ocr_lines_to_rows([line.text for line in document.lines])
+    assert {"项目": "血红蛋白", "结果": "135", "单位": "g/L", "参考区间": ""} in rows, (
+        f"真实 OCR 文本应能转成行，实际 lines={[ln.text for ln in document.lines]}"
+    )
+    _assert_ocr_chain(chain_from_rows(rows, dictionary, catalog, "scan_zh.pdf"))
+
+
+def test_mock_ocr_engine_to_plan_chain(dictionary, catalog) -> None:
+    """**模拟引擎**：用 OCR/渲染替身保证同一链路在无引擎环境也可回归。
+
+    只有"图像→文本"被替身替换；H01/H03/H05/H02/H07/PlanBuilder 全部真实。
+    """
+
+    class _FakeRenderer:
+        renderer_name = "fake-renderer"
+
+        def is_available(self) -> bool:
+            return True
+
+        def render_page(self, pdf_bytes: bytes, page_no: int) -> bytes | None:
+            return f"page-{page_no}".encode()
+
+    class _FakeOcr:
+        engine_name = "fake-ocr"
+
+        def is_available(self) -> bool:
+            return True
+
+        def recognize(self, images: list[bytes]) -> list[str]:
+            return ["\n".join(_ZH_LINES)]
+
+    document = ReportTextExtractor(
+        ocr_engine=_FakeOcr(), pdf_renderer=_FakeRenderer()
+    ).extract("scan_mock.pdf", _scanned_pdf(_ZH_LINES, _cjk_font() or _default_font()), ".pdf")
+    assert document.status == "ok", document.note
+    assert document.pages[0].status == "ocr"
+
+    rows = ocr_lines_to_rows([line.text for line in document.lines])
+    assert len(rows) == 3, "替身文本应被 T03 转成 3 行"
+    _assert_ocr_chain(chain_from_rows(rows, dictionary, catalog, "scan_mock.pdf"))
+
+
+def _default_font():
+    """无中文字体时的兜底字体（模拟用例不依赖中文渲染，仅为构造合法图片页）。"""
+    from PIL import ImageFont
+
+    try:
+        return ImageFont.load_default(size=40)
+    except TypeError:  # Pillow < 10.1
+        return ImageFont.load_default()

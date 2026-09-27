@@ -441,8 +441,14 @@ def test_content_loaders_are_repeatable() -> None:
     assert first_codes == second_codes
 
     first_exam = "1558-6"
-    first_assoc = [a.association_id for a in load_builtin_associations().associations_for_exam(first_exam)]
-    second_assoc = [a.association_id for a in load_builtin_associations().associations_for_exam(first_exam)]
+    first_assoc = [
+        a.association_id
+        for a in load_builtin_associations().associations_for_exam(first_exam)
+    ]
+    second_assoc = [
+        a.association_id
+        for a in load_builtin_associations().associations_for_exam(first_exam)
+    ]
     assert first_assoc == second_assoc
 
 
