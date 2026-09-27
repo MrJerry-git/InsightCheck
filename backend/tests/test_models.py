@@ -6,6 +6,7 @@ EXPECTED_TABLES = {
     "auth_sessions",
     "prevention_reports",
     "ai_reports",
+    "audit_events",
     "exam_histories",
     "exam_item_prices",
     "exam_items",
