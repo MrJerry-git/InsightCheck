@@ -373,6 +373,7 @@ class PlanService:
     def submit_review(self, plan: Plan, *, actor_account_id: str | None = None) -> Plan:
         if plan.status is not PlanStatus.DRAFT:
             raise PlanError("只有草稿方案可以提交审核", status_code=409)
+        self._assert_current(plan)
         plan.status = PlanStatus.REVIEW
         self.db.commit()
         self.db.refresh(plan)
@@ -387,10 +388,55 @@ class PlanService:
             for item in tier.get("items", [])
         ):
             raise PlanError("方案中存在被规则禁止的项目，不能确认", status_code=409)
+        self._assert_current(plan)
         plan.status = PlanStatus.CONFIRMED
         self.db.commit()
         self.db.refresh(plan)
         return plan
+
+    def _assert_current(self, plan: Plan) -> None:
+        """提交审核/确认前核对当前资料与规则版本，不允许一边 stale 一边正式确认。
+
+        审核期间更正记录、修改患者信息或启用禁止/暂缓规则都会让方案结论失去依据，
+        此处必须 409 并要求重新分析/复算，而不是只检查旧快照里的 BLOCKED。
+        """
+
+        run = self.db.get(AnalysisRun, plan.analysis_run_id) if plan.analysis_run_id else None
+        patient = self.db.get(Patient, plan.patient_id)
+        if run is None or patient is None:
+            raise PlanError("方案缺少分析结果，无法核对当前资料", status_code=409)
+        if self._is_stale(patient, run):
+            raise PlanError(
+                "资料已更新，方案基于旧版本分析；请重新分析并复算后再提交审核或确认",
+                status_code=409,
+            )
+        snapshot = plan.current_snapshot or {}
+        included = {
+            item["exam_item_id"]
+            for tier in snapshot.get("tiers_result", [])
+            for item in tier.get("items", [])
+        }
+        recorded_versions = set(snapshot.get("rule_set_versions") or [])
+        exclusions = snapshot.get("manual_exclusions", {})
+        for candidate in run.candidates or []:
+            item_id = candidate.get("exam_item_id")
+            if not item_id or item_id in exclusions or item_id not in included:
+                continue
+            fresh = self._refresh_candidate(run, patient, candidate)
+            if fresh.get("rule_status") in {
+                CandidateRuleStatus.BLOCKED.value,
+                CandidateRuleStatus.DEFERRED.value,
+            }:
+                raise PlanError(
+                    f"项目 {fresh.get('code')} 已被当前规则禁止或暂缓；"
+                    "请重新分析并复算方案后再提交审核或确认",
+                    status_code=409,
+                )
+            if not set(fresh.get("rule_set_versions") or []) <= recorded_versions:
+                raise PlanError(
+                    "规则版本已更新，方案结论需要重新复算后再提交审核或确认",
+                    status_code=409,
+                )
 
     # ---- 修订 -------------------------------------------------------------
     def revisions(self, plan: Plan, *, limit: int = 50) -> list[PlanRevision]:

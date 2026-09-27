@@ -465,3 +465,113 @@ def test_edit_reevaluates_rules_after_admin_adds_blocking_rule(test_app, db_sess
         }
         # 新修订记录本轮复算实际命中的规则版本（v2），便于回溯规则变化。
         assert "v2" in revisions[1].snapshot["rule_set_versions"]
+
+
+def start_review(client, headers, patient_id):
+    run = create_run(client, headers, patient_id)
+    plan = client.post(
+        "/api/v1/plans",
+        json={"patient_id": patient_id, "analysis_run_id": run["run_id"]},
+        headers=headers,
+    )
+    assert plan.status_code == 201, plan.text
+    plan_id = plan.json()["plan_id"]
+    review = client.post(f"/api/v1/plans/{plan_id}/submit-review", headers=headers)
+    assert review.status_code == 200, review.text
+    return plan_id
+
+
+def test_submit_review_rejects_plan_when_record_changed(test_app, db_session):
+    """[P1] 审核期间更正记录后，提交审核与确认都必须 409，不能一边 stale 一边确认。"""
+
+    _, patient = prepare(db_session)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        run = create_run(client, headers, patient.id)
+        plan = client.post(
+            "/api/v1/plans",
+            json={"patient_id": patient.id, "analysis_run_id": run["run_id"]},
+            headers=headers,
+        ).json()
+
+        metric = db_session.scalar(select(LabMetric))
+        metric.value = 150.0
+        db_session.commit()
+
+        stale_submit = client.post(
+            f"/api/v1/plans/{plan['plan_id']}/submit-review", headers=headers
+        )
+        assert stale_submit.status_code == 409
+        assert "重新分析" in stale_submit.json()["detail"]
+
+
+def test_confirm_rejects_plan_when_record_changes_during_review(test_app, db_session):
+    """[P1] 复现路径：生成方案→提交审核→更正 ALT→confirm 应 409 而不是 confirmed。"""
+
+    _, patient = prepare(db_session)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        plan_id = start_review(client, headers, patient.id)
+
+        metric = db_session.scalar(select(LabMetric))
+        metric.value = 150.0
+        db_session.commit()
+
+        confirmed = client.post(f"/api/v1/plans/{plan_id}/confirm", headers=headers)
+        assert confirmed.status_code == 409, confirmed.text
+        assert "重新分析" in confirmed.json()["detail"]
+        assert db_session.get(Plan, plan_id).status.value == "review"
+        # 旧修订仍是旧值，未被改写。
+        revision = db_session.scalar(select(PlanRevision))
+        assert revision.snapshot["analysis_fingerprint"]
+
+
+def test_confirm_rejects_plan_when_patient_info_changes(test_app, db_session):
+    """[P1] 审核期间修改患者信息同样使方案过期。"""
+
+    _, patient = prepare(db_session)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        plan_id = start_review(client, headers, patient.id)
+
+        patient.birth_date = date(1960, 1, 1)
+        db_session.commit()
+
+        confirmed = client.post(f"/api/v1/plans/{plan_id}/confirm", headers=headers)
+        assert confirmed.status_code == 409, confirmed.text
+        assert db_session.get(Plan, plan_id).status.value == "review"
+
+
+def test_confirm_rejects_plan_when_blocking_rule_enabled_during_review(test_app, db_session):
+    """[P1] 审核期间启用禁止规则后，确认必须 409 并要求重新复算。"""
+
+    from app.models import MedicalRule
+    from app.models.enums import RuleAction
+
+    _, patient = prepare(db_session)
+    exam_item = db_session.scalar(
+        select(ExamItem).where(ExamItem.code == "LIVER_FUNCTION_PANEL")
+    )
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        plan_id = start_review(client, headers, patient.id)
+
+        db_session.add(
+            MedicalRule(
+                rule_code="NO_LIVER_PANEL_ON_CONFIRM",
+                rule_type="GENDER",
+                exam_item_id=exam_item.id,
+                condition_json={"allowed_genders": ["female"]},
+                action=RuleAction.BLOCK,
+                priority=0,
+                source="测试审核结论",
+                version="v2",
+                enabled=True,
+            )
+        )
+        db_session.commit()
+
+        confirmed = client.post(f"/api/v1/plans/{plan_id}/confirm", headers=headers)
+        assert confirmed.status_code == 409, confirmed.text
+        assert "规则" in confirmed.json()["detail"]
+        assert db_session.get(Plan, plan_id).status.value == "review"
