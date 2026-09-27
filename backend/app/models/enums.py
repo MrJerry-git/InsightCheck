@@ -111,3 +111,12 @@ class ImportTaskStatus(StrEnum):
     FAILED = "failed"
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
+
+
+class AnalysisStatus(StrEnum):
+    """分析运行状态。模型未接入不阻断规则路径，只在结果里标记未评估。"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
