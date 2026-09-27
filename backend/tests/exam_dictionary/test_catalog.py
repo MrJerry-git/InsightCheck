@@ -290,10 +290,9 @@ def test_boolean_reference_bound_is_rejected(tmp_path: Path) -> None:
 
 
 def test_non_finite_reference_bound_is_rejected(tmp_path: Path) -> None:
-    import math
-
     bad = tmp_path / "nan.json"
-    bad.write_text(json.dumps(_entry_with_range(float("nan"), 6.1), ensure_ascii=False), encoding="utf-8")
+    payload = json.dumps(_entry_with_range(float("nan"), 6.1), ensure_ascii=False)
+    bad.write_text(payload, encoding="utf-8")
     with pytest.raises(DictionaryValidationError) as excinfo:
         ExamDictionary.load_with_extensions([bad])
     assert "min_value 必须是有限数字" in str(excinfo.value)

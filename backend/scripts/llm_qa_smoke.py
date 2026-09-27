@@ -35,9 +35,15 @@ OUT_PATH = Path(__file__).resolve().parents[2] / "docs" / "llm-qa-run-record.jso
 
 # 编号故意不与输入顺序一致，用来验证绑定关系没有按编号排序错位
 EVIDENCE = (
-    EvidenceItem(ref_id="EV-9", text="空腹血糖 7.2 mmol/L（偏高）", record_ref="rec-labs-2026-06-01"),
-    EvidenceItem(ref_id="EV-2", text="尿酸 480 μmol/L（偏高）", record_ref="rec-labs-2026-06-01"),
-    EvidenceItem(ref_id="EV-5", text="体质指数 27.4 kg/m2（超重）", record_ref="rec-body-2026-06-01"),
+    EvidenceItem(
+        ref_id="EV-9", text="空腹血糖 7.2 mmol/L（偏高）", record_ref="rec-labs-2026-06-01"
+    ),
+    EvidenceItem(
+        ref_id="EV-2", text="尿酸 480 μmol/L（偏高）", record_ref="rec-labs-2026-06-01"
+    ),
+    EvidenceItem(
+        ref_id="EV-5", text="体质指数 27.4 kg/m2（超重）", record_ref="rec-body-2026-06-01"
+    ),
 )
 
 QUESTION = (
