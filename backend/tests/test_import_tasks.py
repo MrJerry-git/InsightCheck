@@ -482,3 +482,190 @@ def test_unsupported_spreadsheet_suffix_is_rejected(test_app, db_session):
         )
         assert response.status_code == 415
         assert ".xls" in response.json()["detail"]["message"]
+
+
+def confirm_task(client, headers, task_id, **body):
+    return client.post(f"/api/v1/imports/tasks/{task_id}/confirm", json=body, headers=headers)
+
+
+def only_metric(db_session):
+    metrics = db_session.scalars(select(LabMetric)).all()
+    assert len(metrics) == 1
+    return metrics[0]
+
+
+def test_confirm_keeps_missing_unit_pending(test_app, db_session):
+    """[P1] 缺单位时保留原文，不写入可比较数值，也不冒充标准单位。"""
+
+    make_account(db_session, "doctor-a")
+    seed_dictionary(db_session)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        body = upload(client, headers, patient_id, HEADER + "2026-01-05,ALT,ALT,35,,0,40\n").json()
+        assert "missing_unit" in [item["code"] for item in body["rows"][0]["issues"]]
+
+        confirmed = confirm_task(client, headers, body["task_id"])
+        assert confirmed.status_code == 200, confirmed.text
+        metric = only_metric(db_session)
+        assert metric.original_value == "35"
+        assert metric.value is None
+        assert metric.original_unit is None
+        assert metric.standard_unit is None
+        assert metric.normalization_status.value == "unsupported_unit"
+
+
+def test_confirm_keeps_unknown_unit_pending(test_app, db_session):
+    """[P1] 未知单位不换算、不改标签，停在待确认。"""
+
+    make_account(db_session, "doctor-a")
+    seed_dictionary(db_session)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        body = upload(
+            client, headers, patient_id, HEADER + "2026-01-05,ALT,ALT,35,mmol/L,0,40\n"
+        ).json()
+        assert "unsupported_unit" in [item["code"] for item in body["rows"][0]["issues"]]
+
+        confirmed = confirm_task(client, headers, body["task_id"])
+        assert confirmed.status_code == 200, confirmed.text
+        metric = only_metric(db_session)
+        assert metric.original_value == "35"
+        assert metric.value is None
+        assert metric.original_unit == "mmol/L"
+        assert metric.standard_unit is None
+        assert metric.normalization_status.value == "unsupported_unit"
+
+
+def test_confirm_converts_value_and_reference_range(test_app, db_session):
+    """[P1] 有依据的换算必须同时换算数值与参考区间。"""
+
+    make_account(db_session, "doctor-a")
+    definition = MetricDictionary(
+        metric_code="GLU",
+        canonical_name="空腹血糖",
+        aliases=["FPG"],
+        standard_unit="mmol/L",
+        category="血糖",
+        value_type=ValueType.NUMERIC,
+        unit_conversions={"mg/dL": {"factor": 0.0555, "offset": 0.0}},
+        source="测试来源",
+        version="v1",
+    )
+    db_session.add(definition)
+    db_session.commit()
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        body = upload(
+            client, headers, patient_id, HEADER + "2026-01-05,GLU,空腹血糖,100,mg/dL,70,110\n"
+        ).json()
+        assert body["rows"][0]["unit"] == "mg/dL"
+
+        confirmed = confirm_task(client, headers, body["task_id"])
+        assert confirmed.status_code == 200, confirmed.text
+        metric = only_metric(db_session)
+        assert metric.value == pytest.approx(5.55)
+        assert metric.original_value == "100"
+        assert metric.original_unit == "mg/dL"
+        assert metric.standard_unit == "mmol/L"
+        assert metric.reference_min == pytest.approx(3.885)
+        assert metric.reference_max == pytest.approx(6.105)
+        assert metric.normalization_status.value == "normalized"
+
+
+def test_excel_confirm_keeps_unit_pending(test_app, db_session):
+    """[P1] Excel 入口与 CSV 同一规则：缺单位/未知单位都停在待确认。"""
+
+    make_account(db_session, "doctor-a")
+    seed_dictionary(db_session)
+    content = _xlsx_bytes(
+        [
+            ["date", "metric_code", "original_name", "value", "unit", "reference_min",
+             "reference_max"],
+            ["2026-01-05", "ALT", "ALT", 35, None, 0, 40],
+            ["2026-01-06", "ALT", "ALT", 42, "IU/mL", 0, 40],
+        ]
+    )
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        response = client.post(
+            "/api/v1/imports/tasks",
+            data={"patient_id": patient_id},
+            files={
+                "file": (
+                    "report.xlsx",
+                    content,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+        confirmed = confirm_task(client, headers, response.json()["task_id"])
+        assert confirmed.status_code == 200, confirmed.text
+        metrics = db_session.scalars(select(LabMetric).order_by(LabMetric.original_value)).all()
+        assert len(metrics) == 2
+        for metric in metrics:
+            assert metric.value is None
+            assert metric.standard_unit is None
+            assert metric.normalization_status.value == "unsupported_unit"
+
+
+def test_model_parser_keeps_original_cholesterol_unit(test_app, db_session, monkeypatch):
+    """[P1] 模型给出的 chol_unit 决定单位；确认时按换算依据换算，不写死 mmol/L。"""
+
+    make_account(db_session, "doctor-a")
+    dictionary = MetricDictionary(
+        metric_code="TC",
+        canonical_name="总胆固醇",
+        aliases=["总胆固醇"],
+        standard_unit="mmol/L",
+        category="血脂",
+        value_type=ValueType.NUMERIC,
+        unit_conversions={"mg/dL": {"factor": 0.02586, "offset": 0.0}},
+        source="测试来源",
+        version="v1",
+    )
+    db_session.add(dictionary)
+    db_session.commit()
+
+    def fake_extract(*_args, **_kwargs):
+        return {
+            "draft": {
+                "visits": [
+                    {"date": "2026-01-05", "total_c": 180, "chol_unit": "mg/dL"},
+                    {"date": "2026-01-06", "total_c": 4.2, "chol_unit": "mmol/L"},
+                ],
+                "warnings": [],
+            }
+        }
+
+    monkeypatch.setattr("app.services.smart_import.extract", fake_extract)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        patient_id = create_patient(client, headers)
+        response = client.post(
+            "/api/v1/imports/tasks",
+            data={"patient_id": patient_id},
+            files={"file": ("report.pdf", b"%PDF-1.4 fake", "application/pdf")},
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert [row["unit"] for row in body["rows"]] == ["mg/dL", "mmol/L"]
+
+        confirmed = confirm_task(client, headers, body["task_id"])
+        assert confirmed.status_code == 200, confirmed.text
+        metrics = {
+            metric.original_value: metric
+            for metric in db_session.scalars(select(LabMetric)).all()
+        }
+        assert set(metrics) == {"180", "4.2"}
+        assert metrics["180"].value == pytest.approx(4.6548)
+        assert metrics["180"].original_unit == "mg/dL"
+        assert metrics["180"].standard_unit == "mmol/L"
+        assert metrics["4.2"].value == pytest.approx(4.2)
+        assert {metric.normalization_status.value for metric in metrics.values()} == {"normalized"}

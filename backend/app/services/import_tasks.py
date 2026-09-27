@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.features.metric_normalizer import MetricNormalizer
 from app.importing.tabular_source import (
     EXCEL_SUFFIXES,
     TabularSourceError,
@@ -35,6 +36,7 @@ from app.importing.tabular_source import (
 )
 from app.models import HealthCheck, ImportTask, LabMetric, MetricDictionary, Patient
 from app.models.enums import ImportTaskStatus, MetricStatus, NormalizationStatus, ValueType
+from app.schemas.domain import MetricNormalizationRequest
 from app.services.record_revisions import RecordRevisionService
 
 MAX_BYTES = 8 * 1024 * 1024
@@ -53,7 +55,9 @@ TABULAR_COLUMNS = (
     "reference_max",
 )
 
-# 模型提取字段到目录编码的固定映射；目录里没有的编码按未映射保留原文。
+# 模型提取字段到目录编码的映射；目录里没有的编码按未映射保留原文。
+# 第三项是提示词里约定的单位，只在模型没有给出单位字段时作为原文单位使用；
+# 胆固醇两项的单位随 ``chol_unit`` 变化，不能固定写成 mmol/L。
 MODEL_FIELD_CODES: dict[str, tuple[str, str, str]] = {
     "sbp": ("SBP", "收缩压", "mmHg"),
     "total_c": ("TC", "总胆固醇", "mmol/L"),
@@ -63,6 +67,9 @@ MODEL_FIELD_CODES: dict[str, tuple[str, str, str]] = {
     "hba1c": ("HBA1C", "糖化血红蛋白", "%"),
     "fasting_glucose": ("FPG", "空腹血糖", "mmol/L"),
 }
+
+# 模型草稿里给出单位的字段：胆固醇共用 chol_unit（mmol/L 或 mg/dL）。
+MODEL_UNIT_FIELDS: dict[str, str] = {"total_c": "chol_unit", "hdl_c": "chol_unit"}
 
 # 阻断入库的字段级问题；其余问题只提示，不阻塞同一任务的其它行。
 BLOCKING_ISSUES = frozenset(
@@ -320,10 +327,12 @@ class ImportTaskService:
         parsed: list[dict[str, Any]] = []
         for visit_index, visit in enumerate(draft.get("visits", [])):
             visit_date = visit.get("date")
-            for field, (code, name, unit) in MODEL_FIELD_CODES.items():
+            for field, (code, name, default_unit) in MODEL_FIELD_CODES.items():
                 value = visit.get(field)
                 if value is None:
                     continue
+                unit_field = MODEL_UNIT_FIELDS.get(field)
+                unit = (visit.get(unit_field) if unit_field else None) or default_unit
                 built = self._build_row(
                     task,
                     {
@@ -539,6 +548,8 @@ class ImportTaskService:
         }
         if pending_codes or any(not row["metric_code"] for row in rows):
             definitions["UNMAPPED"] = self._ensure_pending_definition()
+        # 入库前按字典做有依据的标准化：缺单位、未知单位不猜标签，也不写入可比较数值。
+        normalizer = MetricNormalizer(definitions.values())
         revisions = RecordRevisionService(self.db)
         created_checks: list[str] = []
         created_metrics = 0
@@ -587,6 +598,7 @@ class ImportTaskService:
                         skipped.append(row["row_id"])
                         continue
                     definition = definitions.get(code)
+                    normalized = self._normalize_row(normalizer, row, definition)
                     metric = LabMetric(
                         health_check_id=check.id,
                         metric_code=code,
@@ -597,18 +609,14 @@ class ImportTaskService:
                             else (row["original_name"] or "未映射指标")
                         )[:200],
                         original_value=(row["original_value"] or "-")[:100],
-                        value=row["value"],
+                        value=normalized["value"],
                         original_unit=row["unit"],
-                        standard_unit=(definition.standard_unit if definition else row["unit"]),
-                        reference_min=row["reference_min"],
-                        reference_max=row["reference_max"],
-                        status=MetricStatus.UNKNOWN,
-                        normalization_status=(
-                            NormalizationStatus.NORMALIZED
-                            if definition
-                            else NormalizationStatus.UNMAPPED_METRIC
-                        ),
-                        normalization_version="import-task-v1",
+                        standard_unit=normalized["standard_unit"],
+                        reference_min=normalized["reference_min"],
+                        reference_max=normalized["reference_max"],
+                        status=normalized["status"],
+                        normalization_status=normalized["normalization_status"],
+                        normalization_version=normalized["normalization_version"],
                         value_type=ValueType(row["value_type"]),
                         qualitative_value=row["qualitative_value"],
                         source_kind="import",
@@ -641,6 +649,63 @@ class ImportTaskService:
         self._cleanup_temporary(task)
         self.db.refresh(task)
         return task.result_summary
+
+    def _normalize_row(
+        self,
+        normalizer: MetricNormalizer,
+        row: dict[str, Any],
+        definition: MetricDictionary | None,
+    ) -> dict[str, Any]:
+        """按目录定义换算一行数值；不能确认单位时保留原文并停在待确认状态。
+
+        只有 ``normalization_status == normalized`` 才写入 ``value`` 与标准单位：
+        缺单位、未知单位、超范围或缺依据的数值都只保留 ``original_value``，
+        避免用未换算的数值冒充可比较结果。
+        """
+
+        pending: dict[str, Any] = {
+            "value": None,
+            "standard_unit": None,
+            "reference_min": None,
+            "reference_max": None,
+            "status": MetricStatus.UNKNOWN,
+            "normalization_status": NormalizationStatus.UNSUPPORTED_UNIT,
+            "normalization_version": "import-task-v1",
+        }
+        if definition is None or definition.metric_code == "UNMAPPED":
+            return {
+                **pending,
+                "normalization_status": NormalizationStatus.UNMAPPED_METRIC,
+            }
+        if ValueType(row.get("value_type") or ValueType.NUMERIC.value) is not ValueType.NUMERIC:
+            # 定性与文字结果不参与换算，保留原文即可。
+            return {
+                **pending,
+                "standard_unit": definition.standard_unit,
+                "reference_min": row.get("reference_min"),
+                "reference_max": row.get("reference_max"),
+                "normalization_status": NormalizationStatus.NORMALIZED,
+            }
+        result = normalizer.normalize(
+            MetricNormalizationRequest(
+                original_name=definition.metric_code,
+                original_value=(row.get("original_value") or "-")[:100],
+                original_unit=row.get("unit"),
+                reference_min=row.get("reference_min"),
+                reference_max=row.get("reference_max"),
+            )
+        )
+        if result.normalization_status is NormalizationStatus.NORMALIZED:
+            return {
+                "value": result.value,
+                "standard_unit": result.standard_unit,
+                "reference_min": result.reference_min,
+                "reference_max": result.reference_max,
+                "status": result.status,
+                "normalization_status": result.normalization_status,
+                "normalization_version": result.normalization_version,
+            }
+        return {**pending, "normalization_status": result.normalization_status}
 
     def _ensure_pending_definition(self) -> MetricDictionary:
         """待映射占位字典项：保留原文，人工映射后再改编码（T08 管理接口）。"""
