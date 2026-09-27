@@ -101,15 +101,45 @@ def sqlite_path(database_url: str) -> Path:
     return Path(database_url.replace("sqlite:///", "", 1)).expanduser().resolve()
 
 
-def current_revision(database: Path) -> str | None:
+def read_revisions(database: Path) -> tuple[str, ...]:
+    """读取 ``alembic_version`` 里的**全部** revision；没有该表时返回空元组。
+
+    ``alembic_version`` 允许存在多行（多 head）。只读第一行会把第二条 head
+    当成不存在，让本该拒绝的恢复被当成同版本放行（审核 P1）。
+    """
+
     if not database.exists():
-        return None
-    with sqlite3.connect(database) as connection:
+        return ()
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
         try:
-            row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+            rows = connection.execute("SELECT version_num FROM alembic_version").fetchall()
         except sqlite3.OperationalError:
-            return None
-    return None if row is None else str(row[0])
+            return ()
+    return tuple(str(row[0]) for row in rows)
+
+
+def current_revision(database: Path) -> str | None:
+    revisions = read_revisions(database)
+    return revisions[0] if revisions else None
+
+
+def revision_state(database: Path, *, role: str) -> str | None:
+    """校验一个库的迁移版本是否可判定；多 head 或未知版本直接拒绝。
+
+    本工具不做多分支合并，也没有能力确认未知版本的结构，故两种情况都必须显式
+    拒绝，而不是挑第一行继续判断。
+    """
+
+    revisions = read_revisions(database)
+    if not revisions:
+        return None
+    if len(revisions) > 1:
+        heads = ", ".join(sorted(revisions))
+        raise BackupError(f"{role}存在多个迁移 head（{heads}），本工具不支持多 head，拒绝继续")
+    revision = revisions[0]
+    if _ancestors(revision) is None:
+        raise BackupError(f"{role}的 Alembic 版本 {revision} 无法在迁移图中确认，拒绝继续")
+    return revision
 
 
 def integrity_ok(database: Path) -> bool:
@@ -129,6 +159,8 @@ def create_backup(database_url: str, output_dir: Path, *, stamp: str | None = No
     database = sqlite_path(database_url)
     if not database.exists():
         raise BackupError(f"数据库文件不存在：{database}")
+    # 备份前先确认版本可判定：多 head 或未知版本写进清单会误导后续恢复。
+    revision = revision_state(database, role="源数据库")
     if not integrity_ok(database):
         raise BackupError("源数据库完整性校验失败，已中止备份")
     timestamp = stamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -138,7 +170,6 @@ def create_backup(database_url: str, output_dir: Path, *, stamp: str | None = No
     with sqlite3.connect(database) as source, sqlite3.connect(archive) as target:
         source.backup(target)
     checksum = digest_file(archive)
-    revision = current_revision(archive)
     manifest = {
         "archive": archive.name,
         "created_at": datetime.now(UTC).isoformat(),
@@ -175,8 +206,8 @@ def restore_backup(
         raise BackupError("备份文件完整性校验失败，拒绝恢复")
     if target.exists() and not force:
         raise BackupError("目标数据库已存在；确认覆盖请显式使用 force")
-    archived_revision = current_revision(archive)
-    current = current_revision(target) if target.exists() else None
+    archived_revision = revision_state(archive, role="备份文件")
+    current = revision_state(target, role="目标数据库") if target.exists() else None
     if target.exists() and current is not None:
         if archived_revision is None:
             raise BackupError("备份未记录 Alembic 版本，无法确认与当前数据库的先后关系")

@@ -9,7 +9,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.core.backup import BackupError, create_backup, current_revision, restore_backup
+from app.core.backup import (
+    BackupError,
+    create_backup,
+    current_revision,
+    read_revisions,
+    restore_backup,
+)
 from app.models import Base, HealthCheck, Patient
 from app.models.enums import AccountRole, Gender
 from app.services.auth_service import AuthService
@@ -215,3 +221,67 @@ def test_backup_rejects_non_sqlite(tmp_path):
     with pytest.raises(BackupError) as excinfo:
         create_backup("postgresql://user@host/db", tmp_path)
     assert "SQLite" in str(excinfo.value)
+
+
+def make_multi_head_database(path, revisions):
+    """建一个 alembic_version 里有多个 head 的库（模拟未合并的分支版本表）。"""
+
+    import sqlite3
+
+    engine = create_engine(f"sqlite:///{path}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"
+        )
+        connection.execute("DELETE FROM alembic_version")
+        connection.executemany(
+            "INSERT INTO alembic_version VALUES (?)", [(item,) for item in revisions]
+        )
+        connection.commit()
+    return path
+
+
+def test_backup_rejects_multiple_heads_in_target(tmp_path):
+    """审核 P1 复现：目标库有两条 head 时只读第一行会把旧备份当成同版本放行。"""
+
+    source = make_versioned_database(tmp_path / "source.db", "f2a7c4d10e88")
+    backup = create_backup(f"sqlite:///{source}", tmp_path / "backups")
+
+    target = make_multi_head_database(
+        tmp_path / "target.db", ["f2a7c4d10e88", "unknown-other-head"]
+    )
+    with pytest.raises(BackupError) as excinfo:
+        restore_backup(backup.archive_path, f"sqlite:///{target}", force=True)
+    assert "多个迁移 head" in str(excinfo.value)
+    # 拒绝之后目标库没有被覆盖，两条 head 仍在。
+    assert set(read_revisions(target)) == {"f2a7c4d10e88", "unknown-other-head"}
+
+
+def test_backup_rejects_multiple_heads_at_backup(tmp_path):
+    """备份侧同样拒绝多 head，不把不可判定的版本写进清单。"""
+
+    database = make_multi_head_database(
+        tmp_path / "multi.db", ["f2a7c4d10e88", "b3c1d9e77a45"]
+    )
+    with pytest.raises(BackupError) as excinfo:
+        create_backup(f"sqlite:///{database}", tmp_path / "backups")
+    assert "多个迁移 head" in str(excinfo.value)
+    assert not list((tmp_path / "backups").glob("*.db"))
+
+
+def test_backup_rejects_same_but_unknown_revision(tmp_path):
+    """审核 P1：same 分支也必须确认版本属于当前迁移图。"""
+
+    archive_source = make_versioned_database(tmp_path / "archive.db", "not-a-real-revision")
+    # 备份侧先拒绝未知版本。
+    with pytest.raises(BackupError) as backup_error:
+        create_backup(f"sqlite:///{archive_source}", tmp_path / "backups")
+    assert "无法在迁移图中确认" in str(backup_error.value)
+
+    # 即使是此前留下的旧备份文件，恢复侧对同名的未知版本仍必须拒绝。
+    target = make_versioned_database(tmp_path / "target.db", "not-a-real-revision")
+    with pytest.raises(BackupError) as excinfo:
+        restore_backup(archive_source, f"sqlite:///{target}", force=True)
+    assert "无法在迁移图中确认" in str(excinfo.value)
