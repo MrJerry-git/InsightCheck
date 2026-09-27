@@ -1,6 +1,6 @@
 # 2.0 后端集成与前端联调说明（T12）
 
-负责人：王天一。更新：2026-09-22（针对 2026-09-22 批次审核意见复核）。范围：T01—T12
+负责人：王天一。更新：2026-09-27（针对 2026-09-23 复核意见第二轮整改）。范围：T01—T12
 后端交付、接口清单、可运行链路、前端接入字段与已知未完成项。
 **本文不代表 2.0 全部验收完成**：前端 C01—C12 与 H 系列服务仍在各自分支/PR 中。
 
@@ -23,6 +23,30 @@
 的内置 Excel 读取并在响应里标注实际使用的实现；H05/H07 的真实接入仍待王宏锦合并后串接；
 参赛页面仍调用旧 `/smart-import/*`，**AI 对话编辑与“＋ 新建档案”在前端尚未接入，
 因此不计为页面功能完成**。
+
+## 0.1 2026-09-27 第二轮整改（2026-09-23 复核 P1）
+
+逐条整改 2026-09-23 复核提出的 P1，每条都有可复现的 API 用例；提交已推送到对应 PR。
+
+| PR | 复核 P1 | 修复提交 | 验证命令（在对应分支的 `backend/` 下执行） |
+| --- | --- | --- | --- |
+| #32 T03 | 入库未做单位标准化：缺单位仍标 `normalized`、可换算单位只改标签不改值 | `07e9aa6` | `python -m pytest tests/test_import_tasks.py`：CSV/Excel/模型三入口的缺单位、未知单位保持待确认（`unsupported_unit`，不写 `value`），mg/dL→mmol/L 同时换算值与参考区间；模型 `chol_unit` 不再被固定标签覆盖 |
+| #34 T06/T07 | `submit_review`/`confirm_plan` 不检查当前资料与规则版本 | `781482b` | `python -m pytest tests/test_plans.py`：审核期间改记录、改患者信息、启用禁止规则后提交/确认均 **409**，方案保持 `review`，旧修订不改写 |
+| #36 T09/T10 | 首次 `GET` 报告才冻结证据，旧修订被绑定读取时的当前值 | `e4d681e` | `python -m pytest tests/test_reports_qa.py`：生成方案后先改/删记录再首次导出，`evidence.records.original_value` 仍是生成时的值；证据随方案修订原子写入快照 |
+| #37 T11 | `current_revision` 只读 `alembic_version` 第一行，多 head 被当成同版本放行 | `d2a2d0a` | `python -m pytest tests/test_ops.py`：目标库双 head（`f2a…` + 未知 head）时恢复被拒绝且不覆盖；备份侧同样拒绝多 head；同名未知版本在 `same` 分支也拒绝 |
+| #39 AI-T01—T08 | 新建档案未校验 `save_current.profile_id` 归属；`session_id` 可省略绕过会话保护 | `656461f` | `python -m pytest tests/conversation`：跨账号 `cancel`/`yes`/`no`/重复 `op_id` 全部 **404** 且不返回对方状态；写操作省略 `session_id` 为 **422**；契约文档第 2/8.2/15 节同步 |
+
+链尾 `feat/conversational-import` 干净检出（macOS + Python 3.11，`pip install -e .[dev]`）
+运行 `python -m pytest`：**472 passed, 2 skipped**（跳过项为未安装可选依赖 `pyarrow` 的
+研究用只读用例）。各分支单独运行：`feat/import-tasks` 349、`feat/plan-workflow` 364、
+`feat/report-qa` 378、`feat/ops-deploy` 388、`feat/conversational-import` 472（均为
+passed，2 skipped）。
+
+本轮**未**包含、仍按第 6 节待办的部分：H03/H04/H05 未合并进 main，分析发现来源仍未切到
+H05/H07 服务；T10 与 H08 共用模型/引用服务的接线同样待 H 服务合入后串接；参赛页面仍是旧
+`/smart-import/*`，对话式导入的前端接入属陈子正。PR 的 base 仍按顺序堆叠，
+待上游合入 main 后由审核方重设 base 复核最终差异。
+
 
 ## 1. 交付状态一览
 
