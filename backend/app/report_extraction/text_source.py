@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from app.report_extraction.ocr import OcrEngine, UnavailableOcr
-from app.report_extraction.render import PdfRenderer, UnavailableRenderer
+from app.report_extraction.render import PdfRenderer, default_renderer
 from app.report_extraction.schemas import (
     ExtractedDocument,
     ExtractedLine,
@@ -56,7 +56,8 @@ class ReportTextExtractor:
         pdf_renderer: PdfRenderer | None = None,
     ) -> None:
         self._ocr = ocr_engine or UnavailableOcr()
-        self._renderer = pdf_renderer or UnavailableRenderer()
+        # 未显式注入时按可用性自动选择：pypdfium2（宽松许可）优先，PyMuPDF 回退
+        self._renderer = pdf_renderer or default_renderer()
 
     def extract(self, source_name: str, content: bytes, suffix: str) -> ExtractedDocument:
         clean_suffix = suffix.lower().lstrip(".")

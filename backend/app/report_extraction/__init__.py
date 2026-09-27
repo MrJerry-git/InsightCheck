@@ -11,7 +11,9 @@ from app.report_extraction.ocr import OcrEngine, RapidOcrAdapter, UnavailableOcr
 from app.report_extraction.render import (
     PdfRenderer,
     PyMuPdfRenderer,
+    Pypdfium2Renderer,
     UnavailableRenderer,
+    default_renderer,
 )
 from app.report_extraction.schemas import (
     ExtractedDocument,
@@ -30,6 +32,7 @@ __all__ = [
     "PageExtraction",
     "PdfRenderer",
     "PyMuPdfRenderer",
+    "Pypdfium2Renderer",
     "RapidOcrAdapter",
     "ReportStructurer",
     "ReportTextExtractor",
@@ -37,4 +40,5 @@ __all__ = [
     "StructuredReport",
     "UnavailableOcr",
     "UnavailableRenderer",
+    "default_renderer",
 ]

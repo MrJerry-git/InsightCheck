@@ -1,23 +1,31 @@
 """H04 原文抽取与版式结构化。
 
-自制最小 PDF 夹具（build_pdf 手工构造合法 PDF 字节）用于验证文本层
-抽取、页码/行号定位；OCR 走显式不可用路径（未安装引擎不伪造文本）。
+自制 PDF 夹具（build_pdf 手工构造带文本层的合法 PDF 字节；compose_pdf 支持
+文本页与**图片页**，图片页无文本层等价扫描件）用于验证文本层抽取、页码/行号
+定位与逐页 OCR；OCR/渲染走显式不可用路径时不伪造文本。
+
+可选引擎（pypdfium2 渲染 + rapidocr-onnxruntime OCR）未安装时相关测试
+**显式 skip**，不让 import 失败变成测试错误（PR #20 复核 P1）；真实运行记录由
+backend/scripts/ocr_smoke.py 在装好 backend `ocr` extra 的环境产出。
 """
 
 from __future__ import annotations
+
+import zlib
 
 import pytest
 
 from app.report_extraction import (
     ExtractedDocument,
     ExtractedLine,
-    PageExtraction,
     PyMuPdfRenderer,
+    Pypdfium2Renderer,
     RapidOcrAdapter,
     ReportStructurer,
     ReportTextExtractor,
     UnavailableOcr,
     UnavailableRenderer,
+    default_renderer,
 )
 
 # ---- 自制 PDF 夹具 ----
@@ -77,6 +85,149 @@ def build_pdf(pages_lines: list[list[str]]) -> bytes:
         f"startxref\n{xref_pos}\n%%EOF"
     ).encode()
     return bytes(out)
+
+
+def _text_image(text: str, width: int = 1000, height: int = 300, font=None):
+    """用 Pillow 画一张白底黑字图片，供构造"扫描件"（无文本层）。
+
+    不依赖 PyMuPDF：图片由 Pillow 生成后以 FlateDecode 原始 RGB 直接嵌入 PDF。
+    ``font`` 为 None 时用 Pillow 默认字体；中文样例传入 CJK 字体。
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+    if font is None:
+        try:
+            font = ImageFont.load_default(size=48)
+        except TypeError:  # Pillow < 10.1 无 size 参数
+            font = ImageFont.load_default()
+    box = draw.multiline_textbbox((0, 0), text, font=font, spacing=28)
+    draw.multiline_text(
+        (
+            (width - (box[2] - box[0])) / 2 - box[0],
+            (height - (box[3] - box[1])) / 2 - box[1],
+        ),
+        text,
+        fill="black",
+        font=font,
+        spacing=28,
+    )
+    return image
+
+
+_CJK_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/simhei.ttf",
+    "C:/Windows/Fonts/simsun.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+)
+
+
+def _cjk_font(size: int = 44):
+    """加载系统中文字体；找不到返回 None（中文样例显式 skip）。"""
+    import os
+
+    from PIL import ImageFont
+
+    for path in _CJK_FONT_CANDIDATES:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return None
+
+
+def _append(objects: list[bytes], body: bytes) -> int:
+    objects.append(body)
+    return len(objects)  # 对象编号（1-based）
+
+
+def _pdf_stream(payload: bytes) -> bytes:
+    return (
+        b"<< /Length " + str(len(payload)).encode() + b" >>\nstream\n" + payload + b"\nendstream"
+    )
+
+
+def _pdf_bytes(objects: list[bytes]) -> bytes:
+    out = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for obj_no, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{obj_no} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref_pos = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_pos}\n%%EOF"
+    ).encode()
+    return bytes(out)
+
+
+def compose_pdf(pages: list[dict]) -> bytes:
+    """手工构造多页 PDF，模拟真实文件。
+
+    每页为 ``{"kind": "text", "lines": [...]}``（有文本层）或
+    ``{"kind": "image", "image": PIL.Image}``（图片页，**无文本层**，等价扫描件）。
+    """
+    objects: list[bytes] = [b"", b""]  # 1=Catalog, 2=Pages（稍后回填）
+    font_no = _append(objects, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    kids: list[int] = []
+    for page in pages:
+        if page["kind"] == "text":
+            contents_no = _append(objects, _pdf_stream(_content_stream(page["lines"])))
+            kids.append(
+                _append(
+                    objects,
+                    (
+                        f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                        f"/Resources << /Font << /F1 {font_no} 0 R >> >> "
+                        f"/Contents {contents_no} 0 R >>"
+                    ).encode(),
+                )
+            )
+        else:
+            image = page["image"]
+            width, height = image.size
+            payload = zlib.compress(image.convert("RGB").tobytes(), 9)
+            contents_no = _append(
+                objects, _pdf_stream(f"q {width} 0 0 {height} 0 0 cm /Im0 Do Q".encode())
+            )
+            image_no = _append(
+                objects,
+                (
+                    f"<< /Type /XObject /Subtype /Image /Width {width} /Height {height} "
+                    f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode "
+                    f"/Length {len(payload)} >>\nstream\n"
+                ).encode()
+                + payload
+                + b"\nendstream",
+            )
+            kids.append(
+                _append(
+                    objects,
+                    (
+                        f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] "
+                        f"/Resources << /XObject << /Im0 {image_no} 0 R >> >> "
+                        f"/Contents {contents_no} 0 R >>"
+                    ).encode(),
+                )
+            )
+    objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[1] = (
+        b"<< /Type /Pages /Kids ["
+        + b" ".join(f"{no} 0 R".encode() for no in kids)
+        + b"] /Count "
+        + str(len(kids)).encode()
+        + b" >>"
+    )
+    return _pdf_bytes(objects)
 
 
 # ---- 原文抽取 ----
@@ -281,29 +432,55 @@ def test_page_results_exposed_in_as_dict() -> None:
     assert payload["pages"][1] == {"page_no": 2, "status": "failed", "reason": "ocr_unavailable"}
 
 
-def test_real_engine_scanned_and_mixed_pdf() -> None:
-    """真实文件测试：引擎可用时，全扫描与混合 PDF 必须逐页 OCR 成功。"""
-    import fitz
+SCAN_TRUTH = "Total Cholesterol 5.2 mmol/L"
+MIXED_TRUTH = "Fasting Glucose 6.1 mmol/L"
 
-    ocr, renderer = RapidOcrAdapter(), PyMuPdfRenderer()
+
+def _optional_engine() -> tuple[object | None, object | None]:
+    """可选引擎（pypdfium2 渲染 + rapidocr-onnxruntime OCR）都可用时返回实例。
+
+    任一缺失时返回 ``(None, None)``，由调用方**显式 skip** —— 绝不让
+    ``import`` 失败把测试变成 ERROR（PR #20 复核 P1）。验收环境装好
+    backend 的 ``ocr`` extra（``pip install -e '.[ocr]'``）后即可真实运行。
+    """
+    ocr = RapidOcrAdapter()
+    renderer = Pypdfium2Renderer()
     if not ocr.is_available() or not renderer.is_available():
-        pytest.skip("未安装 pymupdf / rapidocr-onnxruntime，跳过真实引擎测试")
+        return None, None
+    return ocr, renderer
+
+
+def test_scanned_pdf_fixture_really_has_no_text_layer() -> None:
+    """确认自制"扫描件"夹具确实无文本层——否则下面的真实引擎测试毫无意义。"""
+    scan_bytes = compose_pdf([{"kind": "image", "image": _text_image(SCAN_TRUTH)}])
+    document = ReportTextExtractor().extract("scan.pdf", scan_bytes, ".pdf")
+    assert document.lines == []
+    assert document.status in ("needs_ocr", "empty")
+
+
+def test_real_engine_scanned_and_mixed_pdf() -> None:
+    """真实引擎冒烟：全扫描与混合 PDF 必须逐页 OCR 成功。
+
+    可选引擎未安装时**显式 skip**（不是失败）；真实运行记录由
+    ``backend/scripts/ocr_smoke.py`` 在装好 ``ocr`` extra 的环境产出。
+    """
+    ocr, renderer = _optional_engine()
+    if ocr is None or renderer is None:
+        pytest.skip("未安装 pypdfium2 / rapidocr-onnxruntime，跳过真实引擎测试")
     extractor = ReportTextExtractor(ocr_engine=ocr, pdf_renderer=renderer)
 
-    scan_bytes = _rasterize_pdf(["Total Cholesterol 5.2 mmol/L"], fitz)
+    scan_bytes = compose_pdf([{"kind": "image", "image": _text_image(SCAN_TRUTH)}])
     document = extractor.extract("scan.pdf", scan_bytes, ".pdf")
     assert document.status == "ok", document.note
     assert document.pages[0].status == "ocr"
     assert any("5.2" in line.text for line in document.lines)
 
-    mixed = fitz.open()
-    page = mixed.new_page()
-    page.insert_text((72, 100), "Lab Report WBC 6.2", fontsize=14)
-    raster = _rasterize_pdf(["Fasting Glucose 6.1 mmol/L"], fitz)
-    mixed.insert_pdf(fitz.open(stream=raster, filetype="pdf"))
-    mixed_bytes = mixed.tobytes()
-    mixed.close()
-
+    mixed_bytes = compose_pdf(
+        [
+            {"kind": "text", "lines": ["Lab Report", "WBC  6.2  10*9/L"]},
+            {"kind": "image", "image": _text_image(MIXED_TRUTH)},
+        ]
+    )
     document = extractor.extract("mixed.pdf", mixed_bytes, ".pdf")
     assert document.status == "ok", document.note
     assert [page.status for page in document.pages] == ["text_layer", "ocr"]
@@ -311,32 +488,56 @@ def test_real_engine_scanned_and_mixed_pdf() -> None:
     assert any("6.1" in line.text for line in document.lines)
 
 
-def _rasterize_pdf(lines: list[str], fitz) -> bytes:
-    """把文字页光栅化后重新嵌入，得到无文本层的"扫描件"。"""
-    source = fitz.open()
-    page = source.new_page()
-    for index, line in enumerate(lines):
-        page.insert_text((72, 100 + 24 * index), line, fontsize=14)
-    pixmap = page.get_pixmap(dpi=200)
-    out = fitz.open()
-    target = out.new_page()
-    target.insert_image(fitz.Rect(0, 0, 612, 792), pixmap=pixmap)
-    data = out.tobytes()
-    out.close()
-    source.close()
-    return data
+def test_real_engine_chinese_scan() -> None:
+    """中文报告扫描样件：真实引擎必须识别出项目名/数值/单位 token。
+
+    可选引擎未安装或系统无中文字体时**显式 skip**；中文样例的实际运行记录见
+    ``docs/ocr-run-record.json`` 与 ``docs/REPORT_EXTRACTION_OCR_RUN.md``。
+    """
+    ocr, renderer = _optional_engine()
+    if ocr is None or renderer is None:
+        pytest.skip("未安装 pypdfium2 / rapidocr-onnxruntime，跳过真实引擎测试")
+    font = _cjk_font()
+    if font is None:
+        pytest.skip("系统无可用中文字体，跳过中文样例")
+    truth = ["血常规检验报告", "血红蛋白 135 g/L", "空腹血糖 5.2 mmol/L"]
+    scan_bytes = compose_pdf(
+        [{"kind": "image", "image": _text_image("\n".join(truth), height=420, font=font)}]
+    )
+    document = ReportTextExtractor(ocr_engine=ocr, pdf_renderer=renderer).extract(
+        "scan_zh.pdf", scan_bytes, ".pdf"
+    )
+    assert document.status == "ok", document.note
+    assert document.pages[0].status == "ocr"
+    text = "".join(line.text for line in document.lines)
+    assert "血常规检验报告" in text
+    assert "135" in text and "g/L" in text
+    assert "5.2" in text and "mmol/L" in text
+
+
+def test_default_renderer_prefers_pypdfium2_over_pymupdf() -> None:
+    """默认渲染后端必须优先 pypdfium2（宽松许可），而非 AGPL 的 PyMuPDF。"""
+    renderer = default_renderer()
+    if Pypdfium2Renderer().is_available():
+        assert renderer.renderer_name == "pypdfium2"
+    elif PyMuPdfRenderer().is_available():
+        assert renderer.renderer_name == "pymupdf", "无 pypdfium2 时才回退 PyMuPDF"
+    else:
+        assert renderer.renderer_name == "none"
 
 
 def test_renderer_and_ocr_adapters_report_unavailability() -> None:
     renderer = UnavailableRenderer()
     assert renderer.is_available() is False
     assert renderer.render_page(b"", 1) is None
-    assert renderer.install_hint()
-    adapter = PyMuPdfRenderer()
-    if adapter.is_available():
-        pytest.skip("PyMuPDF 已安装，跳过不可用路径")
-    assert adapter.is_available() is False
-    assert "pymupdf" in adapter.install_hint().lower()
+    assert "pypdfium2" in renderer.install_hint()
+    # 延迟导入：装了就走真实路径（由真实引擎测试覆盖），没装必须给出安装说明，
+    # 且绝不返回假图像（render_page 返回 None，不冒充成功）。
+    for adapter, package in ((Pypdfium2Renderer(), "pypdfium2"), (PyMuPdfRenderer(), "pymupdf")):
+        if adapter.is_available():
+            continue
+        assert adapter.render_page(b"", 1) is None
+        assert package in adapter.install_hint().lower()
 
 
 # ---- 版式结构化 ----

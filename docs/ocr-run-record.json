@@ -1,12 +1,12 @@
 {
-  "generated_at_utc": "2026-09-22T09:02:58+00:00",
+  "generated_at_utc": "2026-09-27T12:25:03+00:00",
   "environment": {
     "python": "3.12.10",
     "platform": "Windows-11-10.0.26200-SP0",
     "ocr_engine": "rapidocr-onnxruntime",
-    "pdf_renderer": "pymupdf",
+    "pdf_renderer": "pypdfium2",
     "versions": {
-      "pymupdf": "1.27.2.3",
+      "pypdfium2": "5.13.0",
       "rapidocr_onnxruntime": "1.4.4",
       "pypdf": "6.19.0"
     }
@@ -15,6 +15,12 @@
     "Total Cholesterol 5.2 mmol/L",
     "Fasting Glucose 6.1 mmol/L"
   ],
+  "ground_truth_zh": [
+    "血常规检验报告",
+    "血红蛋白 135 g/L",
+    "空腹血糖 5.2 mmol/L"
+  ],
+  "notes": "中文样例已包含",
   "cases": [
     {
       "sample": "scan_2p.pdf",
@@ -60,7 +66,7 @@
           "text": "Fasting Glucose 6.1 mmol/L"
         }
       ],
-      "seconds": 2.314
+      "seconds": 1.77
     },
     {
       "sample": "mixed.pdf",
@@ -100,7 +106,7 @@
           "text": "Fasting Glucose 6.1 mmol/L"
         }
       ],
-      "seconds": 0.688
+      "seconds": 0.477
     },
     {
       "sample": "multi_3p.pdf",
@@ -147,7 +153,42 @@
           "text": "Fasting Glucose 6.1 mmol/L"
         }
       ],
-      "seconds": 1.365
+      "seconds": 0.85
+    },
+    {
+      "sample": "scan_zh.pdf",
+      "status": "ok",
+      "note": null,
+      "page_count": 1,
+      "pages": [
+        {
+          "page_no": 1,
+          "status": "ocr",
+          "reason": null
+        }
+      ],
+      "failed_pages": [],
+      "ocr_pages": [
+        1
+      ],
+      "lines": [
+        {
+          "page_no": 1,
+          "line_no": 1,
+          "text": "血常规检验报告"
+        },
+        {
+          "page_no": 1,
+          "line_no": 2,
+          "text": "血红蛋白135g/L"
+        },
+        {
+          "page_no": 1,
+          "line_no": 3,
+          "text": "空腹血糖5.2mmol/L"
+        }
+      ],
+      "seconds": 1.213
     }
   ]
 }
