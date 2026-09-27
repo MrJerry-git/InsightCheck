@@ -425,3 +425,62 @@ def test_report_evidence_is_frozen_after_records_change(test_app, db_session):
         # 问答不会改动已冻结的报告证据。
         after_answer = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers).json()
         assert after_answer["evidence"]["records"] == first_evidence["records"]
+
+
+def test_report_evidence_frozen_when_revision_is_created(test_app, db_session):
+    """[P1] 复现：ALT=88 生成方案且不打开报告，随后更正为 150；首次导出仍应为 88。"""
+
+    owner = make_account(db_session, "doctor-a")
+    patient = prepare(db_session, owner)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        _, plan = build_plan(client, headers, patient.id)
+
+        # 生成方案后从未打开过报告，直接更正记录数值。
+        metric = db_session.scalar(select(LabMetric))
+        metric.original_value = "150"
+        metric.value = 150.0
+        db_session.commit()
+
+        first = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers)
+        assert first.status_code == 200, first.text
+        records = first.json()["evidence"]["records"]
+        assert records and records[0]["original_value"] == "88"
+
+        # 首次导出之后删除记录，已冻结的证据不随之改变。
+        db_session.delete(metric)
+        db_session.commit()
+        again = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers).json()
+        assert again["evidence"]["records"] == records
+        assert again["evidence"]["snapshot_version"] == "report-evidence-v1"
+
+
+def test_evidence_is_frozen_into_revision_at_creation(test_app, db_session):
+    """[P1] 证据必须随方案修订写进快照，而不是等首次导出才读当前值。"""
+
+    from app.models import PlanRevision, ReportEvidenceSnapshot
+
+    owner = make_account(db_session, "doctor-a")
+    patient = prepare(db_session, owner)
+    with TestClient(test_app) as client:
+        headers = login(client, "doctor-a")
+        _, plan = build_plan(client, headers, patient.id)
+
+        revision = db_session.scalar(
+            select(PlanRevision).where(PlanRevision.plan_id == plan["plan_id"])
+        )
+        frozen = revision.snapshot["evidence_frozen"]
+        assert frozen["snapshot_version"] == "report-evidence-v1"
+        assert frozen["records"][0]["original_value"] == "88"
+        assert frozen["records"][0]["metric_code"] == "ALT"
+        assert frozen["prices"][0]["exam_item_code"] == "LIVER_FUNCTION_PANEL"
+
+        stored = db_session.scalar(select(ReportEvidenceSnapshot))
+        assert stored.plan_id == plan["plan_id"]
+        assert stored.revision_no == revision.revision_no
+        assert stored.evidence == frozen
+
+        # 报告与问答都直接读取这份随修订冻结的证据。
+        document = client.get(f"/api/v1/reports/{plan['plan_id']}", headers=headers).json()
+        assert document["evidence"]["records"] == frozen["records"]
+        assert document["evidence"]["captured_at"] == frozen["captured_at"]

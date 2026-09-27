@@ -35,6 +35,7 @@ from app.services.analysis.runner import AnalysisRunner, input_fingerprint
 from app.services.medical_rule_service import MedicalRuleEngineService
 from app.services.plan_builder import PlanBuilder
 from app.services.pricing_service import load_price_catalog
+from app.services.reporting.reports import freeze_evidence
 
 PLAN_SCHEMA_VERSION = "plan-record-v1"
 
@@ -431,6 +432,20 @@ class PlanService:
             )
             or 0
         ) + 1
+        # 证据随修订原子冻结：不能等到首次导出报告时才读当前 LabMetric/MedicalRule，
+        # 否则「先改记录、后首次导出」会把读取时的值绑到旧修订（审核 P1）。
+        run = self.db.get(AnalysisRun, plan.analysis_run_id) if plan.analysis_run_id else None
+        findings = {item["finding_code"]: item for item in (run.findings if run else [])}
+        snapshot = {
+            **snapshot,
+            "evidence_frozen": freeze_evidence(
+                self.db,
+                plan_id=plan.id,
+                revision_no=revision_no,
+                snapshot=snapshot,
+                findings=findings,
+            ),
+        }
         revision = PlanRevision(
             plan_id=plan.id,
             revision_no=revision_no,

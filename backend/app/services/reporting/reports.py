@@ -45,6 +45,111 @@ def price_text(price: dict[str, Any]) -> str:
     return f"{tag} {amount:.2f} {currency}（来源：{source}）"
 
 
+def evidence_digest(payload: dict[str, Any]) -> str:
+    return sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def build_evidence(
+    db: Session,
+    snapshot: dict[str, Any],
+    *,
+    findings: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """按方案修订快照组装证据内容；不重新计算费用或规则。"""
+
+    record_ids: set[str] = set()
+    for tier in snapshot.get("tiers_result", []):
+        for item in tier.get("items", []):
+            record_ids.update(item.get("rule_evidence_refs", []))
+    records = []
+    if record_ids:
+        rows = db.query(LabMetric).filter(LabMetric.id.in_(record_ids)).all()
+        records = [
+            {
+                "ref": row.id,
+                "type": "lab_metric",
+                "metric_code": row.metric_code,
+                "original_value": row.original_value,
+                "unit": row.standard_unit or row.original_unit,
+                "source_kind": row.source_kind,
+                "source_ref": row.source_ref,
+            }
+            for row in rows
+        ]
+    rule_codes = {
+        decision["rule_code"]
+        for tier in snapshot.get("tiers_result", [])
+        for item in tier.get("items", [])
+        for decision in item.get("applied_rules", [])
+        if isinstance(decision, dict) and decision.get("rule_code")
+    }
+    rules = []
+    if rule_codes:
+        rows = db.query(MedicalRule).filter(MedicalRule.rule_code.in_(rule_codes)).all()
+        rules = [
+            {
+                "rule_code": row.rule_code,
+                "version": row.version,
+                "source": row.source,
+                "enabled": row.enabled,
+            }
+            for row in rows
+        ]
+    prices = [
+        {
+            "exam_item_code": item["code"],
+            "amount_cents": item["price"]["amount_cents"],
+            "currency": item["price"].get("currency"),
+            "source": item["price"].get("source"),
+            "source_url": item["price"].get("source_url"),
+            "is_demo_price": item["price"].get("is_demo_price"),
+            "catalog_version": item["price"].get("catalog_version"),
+        }
+        for tier in snapshot.get("tiers_result", [])
+        for item in tier.get("items", [])
+    ]
+    return {
+        "findings": list((findings or {}).values()),
+        "records": records,
+        "rules": rules,
+        "prices": prices,
+        "price_catalog_version": snapshot.get("price_catalog_version"),
+        "rule_set_versions": snapshot.get("rule_set_versions", []),
+    }
+
+
+def freeze_evidence(
+    db: Session,
+    *,
+    plan_id: str,
+    revision_no: int,
+    snapshot: dict[str, Any],
+    findings: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """随方案修订一起原子冻结证据，并落一条证据快照。
+
+    审核 P1：旧实现只在首次读取报告时冻结，先改记录后首次导出会把读取时的
+    当前值绑到旧修订上。改为跟随修订生成后，证据与修订同源同时点。
+    """
+
+    payload = {
+        **build_evidence(db, snapshot, findings=findings),
+        "snapshot_version": EVIDENCE_SNAPSHOT_VERSION,
+        "captured_at": datetime.now(UTC).isoformat(),
+    }
+    db.add(
+        ReportEvidenceSnapshot(
+            plan_id=plan_id,
+            revision_no=revision_no,
+            evidence=payload,
+            content_sha256=evidence_digest(payload),
+        )
+    )
+    return payload
+
+
 class ReportService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -108,12 +213,17 @@ class ReportService:
         snapshot: dict[str, Any],
         findings: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
-        """读取已冻结的证据快照；首次生成报告时冻结当时依据。
+        """读取随方案修订一起冻结的证据；旧修订回退到已保存的证据快照。
 
-        报告一旦生成，之后修改/删除记录或更新规则都不再改变它的依据，
+        证据在生成方案修订时写入快照，之后修改/删除记录或更新规则都不改变它，
         历史问答同样读取这份快照，保证"报告与依据"版本一致。
+        本次修复之前生成的旧修订没有随修订冻结的证据：先用已保存的证据快照，
+        两者都没有时才按当时读到的当前值补齐并立即落库。
         """
 
+        frozen = snapshot.get("evidence_frozen")
+        if isinstance(frozen, dict) and frozen.get("snapshot_version"):
+            return frozen
         number = self._revision_no(plan, revision_no)
         stored = self.db.scalar(
             select(ReportEvidenceSnapshot).where(
@@ -123,20 +233,12 @@ class ReportService:
         )
         if stored is not None:
             return stored.evidence
-        payload = {
-            **self._evidence(snapshot, findings),
-            "snapshot_version": EVIDENCE_SNAPSHOT_VERSION,
-            "captured_at": datetime.now(UTC).isoformat(),
-        }
-        self.db.add(
-            ReportEvidenceSnapshot(
-                plan_id=plan.id,
-                revision_no=number,
-                evidence=payload,
-                content_sha256=sha256(
-                    json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-                ).hexdigest(),
-            )
+        payload = freeze_evidence(
+            self.db,
+            plan_id=plan.id,
+            revision_no=number,
+            snapshot=snapshot,
+            findings=findings,
         )
         self.db.commit()
         return payload
@@ -144,65 +246,7 @@ class ReportService:
     def _evidence(
         self, snapshot: dict[str, Any], findings: dict[str, dict[str, Any]]
     ) -> dict[str, Any]:
-        record_ids: set[str] = set()
-        for tier in snapshot.get("tiers_result", []):
-            for item in tier.get("items", []):
-                record_ids.update(item.get("rule_evidence_refs", []))
-        records = []
-        if record_ids:
-            rows = self.db.query(LabMetric).filter(LabMetric.id.in_(record_ids)).all()
-            records = [
-                {
-                    "ref": row.id,
-                    "type": "lab_metric",
-                    "metric_code": row.metric_code,
-                    "original_value": row.original_value,
-                    "unit": row.standard_unit or row.original_unit,
-                    "source_kind": row.source_kind,
-                    "source_ref": row.source_ref,
-                }
-                for row in rows
-            ]
-        rule_codes = {
-            decision["rule_code"]
-            for tier in snapshot.get("tiers_result", [])
-            for item in tier.get("items", [])
-            for decision in item.get("applied_rules", [])
-            if isinstance(decision, dict) and decision.get("rule_code")
-        }
-        rules = []
-        if rule_codes:
-            rows = self.db.query(MedicalRule).filter(MedicalRule.rule_code.in_(rule_codes)).all()
-            rules = [
-                {
-                    "rule_code": row.rule_code,
-                    "version": row.version,
-                    "source": row.source,
-                    "enabled": row.enabled,
-                }
-                for row in rows
-            ]
-        prices = [
-            {
-                "exam_item_code": item["code"],
-                "amount_cents": item["price"]["amount_cents"],
-                "currency": item["price"].get("currency"),
-                "source": item["price"].get("source"),
-                "source_url": item["price"].get("source_url"),
-                "is_demo_price": item["price"].get("is_demo_price"),
-                "catalog_version": item["price"].get("catalog_version"),
-            }
-            for tier in snapshot.get("tiers_result", [])
-            for item in tier.get("items", [])
-        ]
-        return {
-            "findings": list(findings.values()),
-            "records": records,
-            "rules": rules,
-            "prices": prices,
-            "price_catalog_version": snapshot.get("price_catalog_version"),
-            "rule_set_versions": snapshot.get("rule_set_versions", []),
-        }
+        return build_evidence(self.db, snapshot, findings=findings)
 
     # ---- PDF --------------------------------------------------------------
     def render_pdf(self, document: dict[str, Any]) -> bytes:
