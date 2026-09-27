@@ -1,0 +1,85 @@
+{
+  "dataset": "CDC NHANES 2017–2018 public-use files",
+  "purpose": "真实公开输入上的计算冒烟验证，不是准确率实验",
+  "joined_no_prescription_records": 2966,
+  "eligible_complete_records": 229,
+  "excluded_model_range": 59,
+  "sources": [
+    {
+      "table": "DEMO_J",
+      "rows": 9254,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/DEMO_J.xpt",
+      "sha256": "c0b46e0345ea19404928656277c8b0d10b0cca348a9b2fe4fc3c67e8b7ee73ec"
+    },
+    {
+      "table": "BPX_J",
+      "rows": 8704,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/BPX_J.xpt",
+      "sha256": "f98f1d9a4c18173e715c749b4294f6f1525140d5ad5751316bb17cc038fb3423"
+    },
+    {
+      "table": "BMX_J",
+      "rows": 8704,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/BMX_J.xpt",
+      "sha256": "8d675e42d8826ac98714b2c3dd4c5138a5e353fb4424f7eff5e6db4a01ce838a"
+    },
+    {
+      "table": "TCHOL_J",
+      "rows": 7435,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/TCHOL_J.xpt",
+      "sha256": "0291a6a4f6d82dac8392c8c992b519946824dfeda01647935520cf506ed9f4ab"
+    },
+    {
+      "table": "HDL_J",
+      "rows": 7435,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/HDL_J.xpt",
+      "sha256": "9f4eb41b89f0c9f3d6262f873e671eeb2f2eb40581a8426b2a3c8fd4fc19439e"
+    },
+    {
+      "table": "BIOPRO_J",
+      "rows": 6401,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/BIOPRO_J.xpt",
+      "sha256": "5bcd5722c1892883b96a9d7fed0befadabacae313f800fadc0133cd5dd00c4c6"
+    },
+    {
+      "table": "GHB_J",
+      "rows": 6401,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/GHB_J.xpt",
+      "sha256": "35f07094573a0061a03ed609a5a363b34eb1b1c7065d1623b43d72e132a8a654"
+    },
+    {
+      "table": "DIQ_J",
+      "rows": 8897,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/DIQ_J.xpt",
+      "sha256": "1ecbf5360dfc331d1efbf32198553dc30e9a1f4cff0a907ed30ca72bac797f89"
+    },
+    {
+      "table": "SMQ_J",
+      "rows": 6724,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/SMQ_J.xpt",
+      "sha256": "73c3708e540cbf520a566508aa629c3e4ba53cad77dae9388ca36384646455f4"
+    },
+    {
+      "table": "MCQ_J",
+      "rows": 8897,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/MCQ_J.xpt",
+      "sha256": "79c50c805a377fcd61d44fae8b86a16af0a5741f8b1aeebda918d7d743c68f98"
+    },
+    {
+      "table": "RXQ_RX_J",
+      "rows": 19643,
+      "url": "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/RXQ_RX_J.xpt",
+      "sha256": "6196e6753f9bf23b47456f4fcc2d32de05f89388b512594d02b0735949165545"
+    }
+  ],
+  "checks": {
+    "all_probabilities_in_range": true
+  },
+  "limitations": [
+    "横断面数据，不能验证年度复查或长期预测准确性。",
+    "刻意限制为明确报告未用处方药的完整资料人群，非代表性样本。",
+    "没有应用调查权重；不输出总体患病率或效能指标。",
+    "eGFR 按 NIDDK 2021 CKD-EPI 肌酐公式推算。",
+    "无精确体检日期，不导入年度规划，不虚构历史记录。"
+  ]
+}

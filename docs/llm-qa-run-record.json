@@ -1,0 +1,105 @@
+{
+  "task": "H08 结构化解释与真实语言模型问答服务",
+  "owner": "王宏锦（WHJ-2007）",
+  "service_version": "qa-service-v1",
+  "evidence_input": [
+    {
+      "ref_id": "EV-9",
+      "text": "空腹血糖 7.2 mmol/L（偏高）",
+      "record_ref": "rec-labs-2026-06-01"
+    },
+    {
+      "ref_id": "EV-2",
+      "text": "尿酸 480 μmol/L（偏高）",
+      "record_ref": "rec-labs-2026-06-01"
+    },
+    {
+      "ref_id": "EV-5",
+      "text": "体质指数 27.4 kg/m2（超重）",
+      "record_ref": "rec-body-2026-06-01"
+    }
+  ],
+  "question": "请只依据上面给出的证据条目，说明我这次体检有哪些需要复查的异常，每条结论后面用 [EV:编号] 标出你依据的证据编号。",
+  "endpoint_configured": true,
+  "base_url_scheme": "https",
+  "model": "deepseek-chat",
+  "template_mode": {
+    "question": "请只依据上面给出的证据条目，说明我这次体检有哪些需要复查的异常，每条结论后面用 [EV:编号] 标出你依据的证据编号。",
+    "content": "【模板问答，非模型输出】基于当前档案的结构化记录回答：\n- 已登记发现 4 条、趋势摘要 0 条。\n- 可追溯证据条目（编号与正文成对）：\n  · [EV:EV-9] 空腹血糖 7.2 mmol/L（偏高）（来源记录：rec-labs-2026-06-01）\n  · [EV:EV-2] 尿酸 480 μmol/L（偏高）（来源记录：rec-labs-2026-06-01）\n  · [EV:EV-5] 体质指数 27.4 kg/m2（超重）（来源记录：rec-body-2026-06-01）\n- 具体问题需医师结合原始报告确认；本回答不修改任何已保存方案。\n收到的问题：请只依据上面给出的证据条目，说明我这次体检有哪些需要复查的异常，每条结论后面用 [EV:编号] 标出你依据的证据编号。",
+    "mode": "template",
+    "llm_model": "local-template",
+    "trace_id": "46e8f14d-6f78-574f-90ee-8c774a364286",
+    "citations": [
+      "EV-9",
+      "EV-2",
+      "EV-5"
+    ],
+    "citation_records": [
+      [
+        "EV-9",
+        "rec-labs-2026-06-01"
+      ],
+      [
+        "EV-2",
+        "rec-labs-2026-06-01"
+      ],
+      [
+        "EV-5",
+        "rec-body-2026-06-01"
+      ]
+    ],
+    "invalid_citations_removed": []
+  },
+  "model_mode": {
+    "status": "ok",
+    "elapsed_seconds": 1.249,
+    "question": "请只依据上面给出的证据条目，说明我这次体检有哪些需要复查的异常，每条结论后面用 [EV:编号] 标出你依据的证据编号。",
+    "content": "本次体检中，依据所给证据可列为需要复查的异常有以下 3 条：\n\n1. 空腹血糖 7.2 mmol/L（偏高）[EV:EV-9]\n2. 尿酸 480 μmol/L（偏高）[EV:EV-2]\n3. 体质指数 27.4 kg/m2（超重）[EV:EV-5]\n\n以上仅为依据现有证据条目整理的异常项，具体是否需要复查、复查项目及时间安排，应由医生结合您的完整情况判断。本回答不构成诊断。",
+    "mode": "model",
+    "llm_model": "deepseek-chat",
+    "trace_id": "839b8b25-1e1e-5840-9891-537f7b69be62",
+    "citations": [
+      "EV-9",
+      "EV-2",
+      "EV-5"
+    ],
+    "citation_records": [
+      [
+        "EV-9",
+        "rec-labs-2026-06-01"
+      ],
+      [
+        "EV-2",
+        "rec-labs-2026-06-01"
+      ],
+      [
+        "EV-5",
+        "rec-body-2026-06-01"
+      ]
+    ],
+    "invalid_citations_removed": []
+  },
+  "guard_check": {
+    "cited": [
+      "EV-9",
+      "EV-2",
+      "EV-5"
+    ],
+    "invalid_removed": [],
+    "binding_ok": true,
+    "record_refs_resolved": [
+      {
+        "ref_id": "EV-9",
+        "record_ref": "rec-labs-2026-06-01"
+      },
+      {
+        "ref_id": "EV-2",
+        "record_ref": "rec-labs-2026-06-01"
+      },
+      {
+        "ref_id": "EV-5",
+        "record_ref": "rec-body-2026-06-01"
+      }
+    ]
+  }
+}

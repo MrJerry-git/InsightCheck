@@ -9,7 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import (
+    Principal,
+    ensure_patient_access,
+    get_current_principal,
+    get_db,
+    require_write_access,
+    scope_patient_statement,
+)
 from app.models import (
     AIReport,
     ExamItem,
@@ -35,6 +42,7 @@ from app.rules.models import (
     RuleEvaluationRequest,
 )
 from app.services.medical_rule_service import MedicalRuleEngineService
+from app.services.record_revisions import RecordRevisionService
 from app.services.seed_service import DemoSeedService
 from app.services.workflow_models import VERSION, predict
 
@@ -56,8 +64,12 @@ class RecordInput(BaseModel):
 
 
 @router.post("/records")
-def record(payload: RecordInput, db: Session = Depends(get_db)):  # noqa: B008
-    patient = patient_or_404(db, payload.patient_id)
+def record(
+    payload: RecordInput,
+    principal: Principal = Depends(require_write_access),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    patient = ensure_patient_access(db, principal, payload.patient_id)
     if payload.check_date > date.today() or (
         patient.birth_date and payload.check_date < patient.birth_date
     ):
@@ -78,27 +90,35 @@ def record(payload: RecordInput, db: Session = Depends(get_db)):  # noqa: B008
         check_date=payload.check_date,
         is_demo=payload.is_demo,
         institution="工作台手工录入",
+        source_kind="manual",
+        source_ref="workflow/records",
     )
     try:
         db.add(check)
         db.flush()
+        revisions = RecordRevisionService(db)
+        revisions.record(check, action="create", actor_account_id=principal.account_id)
         for metric in payload.metrics:
             d = definitions[metric.code]
-            db.add(
-                LabMetric(
-                    health_check_id=check.id,
-                    metric_code=metric.code,
-                    original_name=d.canonical_name,
-                    canonical_name=d.canonical_name,
-                    original_value=str(metric.value),
-                    value=metric.value,
-                    original_unit=d.standard_unit,
-                    standard_unit=d.standard_unit,
-                    status=MetricStatus.UNKNOWN,
-                    normalization_status=NormalizationStatus.NORMALIZED,
-                    normalization_version="manual-standard-unit-v1",
-                )
+            metric_row = LabMetric(
+                health_check_id=check.id,
+                metric_code=metric.code,
+                original_name=d.canonical_name,
+                canonical_name=d.canonical_name,
+                original_value=str(metric.value),
+                value=metric.value,
+                original_unit=d.standard_unit,
+                standard_unit=d.standard_unit,
+                status=MetricStatus.UNKNOWN,
+                normalization_status=NormalizationStatus.NORMALIZED,
+                normalization_version="manual-standard-unit-v1",
+                value_type=d.value_type,
+                source_kind="manual",
+                source_ref="workflow/records",
             )
+            db.add(metric_row)
+            db.flush()
+            revisions.record(metric_row, action="create", actor_account_id=principal.account_id)
         db.commit()
     except Exception:
         db.rollback()
@@ -114,24 +134,36 @@ class PlanRequest(BaseModel):
     tier: PlanTier = PlanTier.STANDARD
 
 
-def patient_or_404(db, patient_id):
-    patient = db.get(Patient, patient_id)
-    if patient is None:
-        raise HTTPException(404, "档案不存在")
-    return patient
+def owned_plan(db: Session, principal: Principal, plan_id: str) -> dict:
+    """读取方案快照前先按快照所属档案校验权限。"""
+
+    recommendation = db.get(Recommendation, plan_id)
+    if recommendation is not None:
+        ensure_patient_access(db, principal, recommendation.patient_id)
+    return saved(db, plan_id)
 
 
 @router.post("/demo")
-def demo(db: Session = Depends(get_db)):  # noqa: B008
+def demo(
+    principal: Principal = Depends(require_write_access),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):  # noqa: B008
     DemoSeedService(db).run()
     patient = db.scalar(
-        select(Patient).where(Patient.anonymous_code == DemoSeedService.PATIENT_CODE)
+        scope_patient_statement(
+            select(Patient).where(Patient.anonymous_code == DemoSeedService.PATIENT_CODE), principal
+        )
     )
+    if patient is None:
+        raise HTTPException(404, "演示档案不存在或无权访问")
     return {"patient_id": patient.id}
 
 
 @router.get("/patients")
-def patients(db: Session = Depends(get_db)):  # noqa: B008
+def patients(
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
     return [
         {
             "id": p.id,
@@ -140,13 +172,30 @@ def patients(db: Session = Depends(get_db)):  # noqa: B008
             "birth_date": p.birth_date,
             "checks": len(p.health_checks),
         }
-        for p in db.scalars(select(Patient).order_by(Patient.anonymous_code)).all()
+        for p in db.scalars(
+            scope_patient_statement(
+                select(Patient).order_by(Patient.anonymous_code), principal
+            )
+        ).all()
     ]
 
 
 @router.get("/patients/{patient_id}")
-def detail(patient_id: str, as_of_date: date | None = None, db: Session = Depends(get_db)):  # noqa: B008
-    patient = patient_or_404(db, patient_id)
+def detail(
+    patient_id: str,
+    as_of_date: date | None = None,
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    """档案历史与趋势；调用前先校验档案归属。"""
+
+    patient = ensure_patient_access(db, principal, patient_id)
+    return patient_detail(db, patient, as_of_date)
+
+
+def patient_detail(db: Session, patient: Patient, as_of_date: date | None = None) -> dict:
+    """构造档案历史、趋势与病灶跟踪；按检查日期截断，不推断未来数据。"""
+
     cutoff = as_of_date or date.today()
     checks = sorted(
         (c for c in patient.health_checks if c.check_date <= cutoff),
@@ -234,8 +283,12 @@ def saved(db, plan_id):
 
 
 @router.get("/plans")
-def plans(patient_id: str, db: Session = Depends(get_db)):  # noqa: B008
-    patient_or_404(db, patient_id)
+def plans(
+    patient_id: str,
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    ensure_patient_access(db, principal, patient_id)
     return [
         {
             "id": r.recommendation_id,
@@ -251,13 +304,21 @@ def plans(patient_id: str, db: Session = Depends(get_db)):  # noqa: B008
 
 
 @router.get("/plans/{plan_id}")
-def get_plan(plan_id: str, db: Session = Depends(get_db)):  # noqa: B008
-    return saved(db, plan_id)
+def get_plan(
+    plan_id: str,
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return owned_plan(db, principal, plan_id)
 
 
 @router.get("/plans/{plan_id}/export")
-def export_plan(plan_id: str, db: Session = Depends(get_db)):  # noqa: B008
-    snapshot = saved(db, plan_id)
+def export_plan(
+    plan_id: str,
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    snapshot = owned_plan(db, principal, plan_id)
     return Response(
         content=json.dumps(snapshot, ensure_ascii=False, indent=2),
         media_type="application/json",
@@ -268,17 +329,21 @@ def export_plan(plan_id: str, db: Session = Depends(get_db)):  # noqa: B008
 
 
 @router.post("/plans")
-def generate(request: PlanRequest, db: Session = Depends(get_db)):  # noqa: B008
+def generate(
+    request: PlanRequest,
+    principal: Principal = Depends(require_write_access),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
     plan_id = str(request.request_id)
     if db.get(Recommendation, plan_id):
         snapshot = saved(db, plan_id)
         if snapshot["request"] != request.model_dump(mode="json"):
             raise HTTPException(409, "同一请求编号对应不同输入")
         return snapshot
-    patient = patient_or_404(db, request.patient_id)
+    patient = ensure_patient_access(db, principal, request.patient_id)
     if request.as_of_date > date.today():
         raise HTTPException(422, "分析日期不能晚于今天")
-    history = detail(patient.id, request.as_of_date, db)
+    history = patient_detail(db, patient, request.as_of_date)
     if not history["checks"]:
         raise HTTPException(422, "所选日期之前没有体检记录，请先导入或录入")
     items = db.scalars(select(ExamItem).order_by(ExamItem.code)).all()
@@ -446,8 +511,13 @@ class Question(BaseModel):
 
 
 @router.post("/plans/{plan_id}/explain")
-def explain(plan_id: str, question: Question, db: Session = Depends(get_db)):  # noqa: B008
-    snapshot = saved(db, plan_id)
+def explain(
+    plan_id: str,
+    question: Question,
+    principal: Principal = Depends(get_current_principal),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    snapshot = owned_plan(db, principal, plan_id)
     if any(word in question.text for word in ("风险", "概率", "模型")):
         answer = snapshot["risk"]["status"]
     elif any(word in question.text for word in ("价格", "费用", "多少钱")):

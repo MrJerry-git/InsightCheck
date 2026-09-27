@@ -28,6 +28,10 @@ export type NavigationGroup = {
 
 export const navigationGroups: NavigationGroup[] = [
   {
+    label: "比赛核心功能",
+    items: [{ label: "心血管体检规划", href: "/competition", icon: FileHeart }],
+  },
+  {
     label: "总览",
     items: [{ label: "工作台", href: "/dashboard", icon: LayoutDashboard }],
   },

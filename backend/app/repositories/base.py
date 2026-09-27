@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.models.base import Base
@@ -24,8 +25,16 @@ class SqlAlchemyRepository(Generic[ModelT]):
     def get(self, entity_id: str) -> ModelT | None:
         return self.session.get(self.model, entity_id)
 
-    def list(self, *, offset: int = 0, limit: int = 100) -> list[ModelT]:
+    def list(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        transform: Callable[[Select], Select] | None = None,
+    ) -> list[ModelT]:
         statement = select(self.model).offset(offset).limit(limit)
+        if transform is not None:
+            statement = transform(statement)
         created_at = getattr(self.model, "created_at", None)
         if created_at is not None:
             statement = statement.order_by(created_at.desc())

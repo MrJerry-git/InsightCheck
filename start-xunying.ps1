@@ -1,5 +1,6 @@
 param(
-    [switch]$CheckOnly
+    [switch]$CheckOnly,
+    [ValidateSet("dashboard", "competition")][string]$Page = "dashboard"
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,7 +52,7 @@ finally {
 }
 
 $backendHealthUrl = "http://127.0.0.1:8000/health"
-$frontendUrl = "http://127.0.0.1:3000/dashboard"
+$frontendUrl = "http://127.0.0.1:3000/$Page"
 $backendDocsUrl = "http://127.0.0.1:8000/docs"
 
 if (-not (Test-ServiceUrl -Url $backendHealthUrl)) {

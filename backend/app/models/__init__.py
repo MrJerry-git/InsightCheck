@@ -1,5 +1,6 @@
 """SQLAlchemy 领域模型导出。"""
 
+from app.models.auth import Account, AuthSession
 from app.models.base import Base
 from app.models.domain import (
     AIReport,
@@ -20,9 +21,12 @@ from app.models.domain import (
 )
 from app.models.imports import ImportBatch, ImportedRecord
 from app.models.pricing import ExamItemPriceRecord
+from app.models.records import RecordRevision
 
 __all__ = [
+    "Account",
     "AIReport",
+    "AuthSession",
     "Base",
     "ExamHistory",
     "ExamItem",
@@ -40,5 +44,6 @@ __all__ = [
     "Patient",
     "Recommendation",
     "RecommendationItem",
+    "RecordRevision",
     "RiskPrediction",
 ]

@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Activity aria-hidden="true" className="size-4 text-primary" />
               档案 · 分析 · 方案工作台
             </div>
-            <Badge variant="outline">1.0 工程预览</Badge>
+            <Badge variant="outline">研究演示版</Badge>
           </div>
           <div className="overflow-x-auto border-t lg:hidden">
             <SidebarNav compact />

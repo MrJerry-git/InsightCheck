@@ -8,11 +8,35 @@ class Gender(StrEnum):
     UNKNOWN = "unknown"
 
 
+class AccountRole(StrEnum):
+    """登录账号角色。只读角色不能修改业务数据，管理员另有管理接口权限。"""
+
+    ADMIN = "admin"
+    DOCTOR = "doctor"
+    VIEWER = "viewer"
+
+    @property
+    def can_write(self) -> bool:
+        return self is not AccountRole.VIEWER
+
+    @property
+    def can_manage(self) -> bool:
+        return self is AccountRole.ADMIN
+
+
 class MetricStatus(StrEnum):
     NORMAL = "normal"
     LOW = "low"
     HIGH = "high"
     UNKNOWN = "unknown"
+
+
+class ValueType(StrEnum):
+    """指标值类型：数值走趋势图，定性与文字只做状态/原文对照。"""
+
+    NUMERIC = "numeric"
+    QUALITATIVE = "qualitative"
+    TEXT = "text"
 
 
 class NormalizationStatus(StrEnum):

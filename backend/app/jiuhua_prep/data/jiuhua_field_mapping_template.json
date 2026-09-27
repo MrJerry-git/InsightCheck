@@ -1,0 +1,141 @@
+{
+  "template_version": "jiuhua-field-mapping-v1",
+  "generated_at": "2026-09-20",
+  "maintainer": "王宏锦（WHJ-2007），任务 H11",
+  "scope_note": "九华数据字段映射模板（初稿）。全部条目 verification_status=unverified：字段名与含义均为工程假设，待合作方数据字典确认后逐条核验。未登记字段进入待确认清单，不猜测映射。",
+  "entries": [
+    {
+      "source_field": "person_id",
+      "source_description": "假设：机构侧受检者编号（来源系统主键，仅用于生成匿名码后即丢弃）",
+      "target_entity": "patient",
+      "target_field": "anonymous_code",
+      "value_type": "identifier",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "不得原样入库；必须经 anonymize_identifier 生成匿名码"
+    },
+    {
+      "source_field": "sex",
+      "source_description": "假设：性别（编码方式待确认，1/0 或 男/女）",
+      "target_entity": "patient",
+      "target_field": "sex",
+      "value_type": "qualitative",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "编码映射待核验"
+    },
+    {
+      "source_field": "birthday",
+      "source_description": "假设：出生日期（精度待确认，可能仅年份）",
+      "target_entity": "patient",
+      "target_field": "birth_year",
+      "value_type": "date",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "若为完整出生日期，建议只保留年份入库以降低重识别风险"
+    },
+    {
+      "source_field": "exam_date",
+      "source_description": "假设：体检日期",
+      "target_entity": "health_check",
+      "target_field": "check_date",
+      "value_type": "date",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "institution",
+      "source_description": "假设：体检机构名称",
+      "target_entity": "health_check",
+      "target_field": "institution",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "item_name",
+      "source_description": "假设：检查/指标名称（机构自有叫法）",
+      "target_entity": "lab_metric",
+      "target_field": "metric_name",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "导入时经 H01 字典别名匹配；未匹配项进入待映射队列"
+    },
+    {
+      "source_field": "item_code",
+      "source_description": "假设：机构项目编码（便于对账）",
+      "target_entity": "lab_metric",
+      "target_field": "metric_code_hint",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "result",
+      "source_description": "假设：结果值（数值/定性/文字混排）",
+      "target_entity": "lab_metric",
+      "target_field": "original_value",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "原值保留；标准化由 H03 表格解析完成"
+    },
+    {
+      "source_field": "unit",
+      "source_description": "假设：结果单位",
+      "target_entity": "lab_metric",
+      "target_field": "original_unit",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "reference_range",
+      "source_description": "假设：参考区间原文（如 3.5-9.5）",
+      "target_entity": "lab_metric",
+      "target_field": "reference_text",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "exam_type",
+      "source_description": "假设：影像检查类型（超声/DR/CT 等）",
+      "target_entity": "imaging_exam",
+      "target_field": "exam_type",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "body_part",
+      "source_description": "假设：影像检查部位",
+      "target_entity": "imaging_exam",
+      "target_field": "body_part",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified"
+    },
+    {
+      "source_field": "report_text",
+      "source_description": "假设：影像报告原文（所见+结论）",
+      "target_entity": "imaging_exam",
+      "target_field": "report_text",
+      "value_type": "text",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "结构化候选由 H06 影像报告解析产出，须人工校对"
+    },
+    {
+      "source_field": "batch_id",
+      "source_description": "假设：交付批次号",
+      "target_entity": "health_check",
+      "target_field": "source_batch",
+      "value_type": "identifier",
+      "unit": null,
+      "verification_status": "unverified",
+      "notes": "批次级字段，非记录级；写入 ImportBatch 溯源"
+    }
+  ]
+}
