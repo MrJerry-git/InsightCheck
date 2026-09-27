@@ -8,9 +8,17 @@ data/supported_layouts.json 登记，未识别版式显式返回 unknown_layout�
 """
 
 from app.report_extraction.ocr import OcrEngine, RapidOcrAdapter, UnavailableOcr
+from app.report_extraction.render import (
+    PdfRenderer,
+    PyMuPdfRenderer,
+    Pypdfium2Renderer,
+    UnavailableRenderer,
+    default_renderer,
+)
 from app.report_extraction.schemas import (
     ExtractedDocument,
     ExtractedLine,
+    PageExtraction,
     StructuredField,
     StructuredReport,
 )
@@ -21,10 +29,16 @@ __all__ = [
     "ExtractedDocument",
     "ExtractedLine",
     "OcrEngine",
+    "PageExtraction",
+    "PdfRenderer",
+    "PyMuPdfRenderer",
+    "Pypdfium2Renderer",
     "RapidOcrAdapter",
     "ReportStructurer",
     "ReportTextExtractor",
     "StructuredField",
     "StructuredReport",
     "UnavailableOcr",
+    "UnavailableRenderer",
+    "default_renderer",
 ]

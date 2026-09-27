@@ -9,6 +9,7 @@ from app.tabular_parsing import (
     ParsedTabularReport,
     TabularReportParser,
 )
+from app.tabular_parsing.schemas import ENTRY_STATUSES, NON_COMPARABLE_STATUSES
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,10 @@ def make_parser() -> TabularReportParser:
             ),
             "心电图结论": FakeEntry(
                 code="IC:M-ECG-CONCLUSION", display_name="ECG", value_type="text"
+            ),
+            # 无量纲比值：字典未登记标准单位，缺失单位不应被判为待确认
+            "某无量纲比值": FakeEntry(
+                code="IC:RATIO", display_name="RATIO", value_type="numeric", standard_unit=None
             ),
         }
     )
@@ -259,3 +264,73 @@ def test_entries_sorted_deterministically() -> None:
         ),
     )
     assert [e.row_index for e in report.entries] == [1, 2]
+
+
+# ---- PR #19 审核 P1：缺失/空白单位不得自动赋予标准单位 ----
+
+
+def test_numeric_without_unit_column_is_pending_confirmation() -> None:
+    """复现审核场景：血红蛋白=13.5 且未提供单位，不得返回 g/L / mapped。"""
+    report = make_parser().parse("demo.csv", [{"项目": "血红蛋白", "结果": "13.5"}])
+    entry = entry_of(report, "血红蛋白")
+    assert entry.status == "unit_missing"
+    assert entry.canonical_value is None, "缺单位时不能生成可比较数值"
+    assert entry.canonical_unit is None, "缺单位时不能赋予标准单位"
+    assert entry.raw_value == "13.5" and entry.raw_unit is None
+    assert entry.unit_confirmation_required is True
+    assert entry.as_dict()["unit_confirmation_required"] is True
+    assert any(
+        i.severity == "warning" and "未提供单位" in i.message and "g/L" in i.message
+        for i in report.issues
+    )
+
+
+def test_numeric_with_empty_unit_is_pending_confirmation() -> None:
+    report = make_parser().parse(
+        "demo.csv", rows_of({"项目": "血红蛋白", "结果": "13.5", "单位": ""})
+    )
+    entry = entry_of(report, "血红蛋白")
+    assert entry.status == "unit_missing"
+    assert entry.canonical_value is None and entry.canonical_unit is None
+    assert entry.unit_confirmation_required is True
+
+
+def test_numeric_with_blank_unit_is_pending_confirmation() -> None:
+    report = make_parser().parse(
+        "demo.csv", rows_of({"项目": "血红蛋白", "结果": "13.5", "单位": "   "})
+    )
+    entry = entry_of(report, "血红蛋白")
+    assert entry.status == "unit_missing"
+    assert entry.canonical_value is None and entry.canonical_unit is None
+
+
+def test_dimensionless_metric_without_unit_still_maps() -> None:
+    """字典未登记标准单位（无量纲）：不需要单位确认，按原值映射。"""
+    report = make_parser().parse("demo.csv", [{"项目": "某无量纲比值", "结果": "0.86"}])
+    entry = entry_of(report, "某无量纲比值")
+    assert entry.status == "mapped"
+    assert entry.canonical_value == 0.86
+    assert entry.unit_confirmation_required is False
+    assert report.issues == []
+
+
+def test_confirmed_unit_still_converts_and_maps() -> None:
+    """单位确认或有登记依据时，仍应生成可比较值（不能被新规则误伤）。"""
+    direct = make_parser().parse(
+        "demo.csv", rows_of({"项目": "血红蛋白", "结果": "135", "单位": "g/L"})
+    )
+    assert entry_of(direct, "血红蛋白").status == "mapped"
+    assert entry_of(direct, "血红蛋白").canonical_unit == "g/L"
+
+    converted = make_parser().parse(
+        "demo.csv", rows_of({"项目": "血红蛋白", "结果": "13.5", "单位": "g/dL"})
+    )
+    assert entry_of(converted, "血红蛋白").canonical_value == 135.0
+    assert entry_of(converted, "血红蛋白").conversion_basis == "1 g/dL = 10 g/L"
+
+
+def test_unit_missing_is_not_comparable_for_downstream() -> None:
+    """下游（H05 趋势 / H07 规则）据此判定不可比较。"""
+    assert "unit_missing" in ENTRY_STATUSES
+    assert "unit_missing" in NON_COMPARABLE_STATUSES
+    assert "unit_unconverted" in NON_COMPARABLE_STATUSES

@@ -31,6 +31,10 @@ research = [
   "scikit-learn>=1.6,<2",
   "lightgbm>=4.6,<5",
 ]
+ocr = [
+  "pypdfium2>=4,<6",
+  "rapidocr-onnxruntime>=1.4,<2",
+]
 dev = [
   "httpx>=0.27,<1",
   "pytest>=8,<9",

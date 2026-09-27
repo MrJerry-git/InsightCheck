@@ -15,6 +15,7 @@ from app.models.enums import (
     RecommendationDecision,
     RecommendationStatus,
     RuleAction,
+    ValueType,
 )
 from app.rules.models import RuleType
 
@@ -61,6 +62,8 @@ class HealthCheckCreate(DomainSchema):
     check_date: date
     institution: str | None = Field(default=None, max_length=200)
     is_demo: bool = False
+    source_kind: str = Field(default="manual", min_length=1, max_length=32)
+    source_ref: str | None = Field(default=None, max_length=200)
 
 
 class HealthCheckUpdate(DomainSchema):
@@ -68,10 +71,12 @@ class HealthCheckUpdate(DomainSchema):
     check_date: date | None = None
     institution: str | None = Field(default=None, max_length=200)
     is_demo: bool | None = None
+    source_kind: str | None = Field(default=None, min_length=1, max_length=32)
+    source_ref: str | None = Field(default=None, max_length=200)
 
 
 class HealthCheckRead(HealthCheckCreate, ReadSchema):
-    pass
+    revision_no: int
 
 
 class MetricDictionaryCreate(DomainSchema):
@@ -80,6 +85,7 @@ class MetricDictionaryCreate(DomainSchema):
     aliases: list[str] = Field(default_factory=list)
     standard_unit: str | None = Field(default=None, max_length=50)
     category: str = Field(min_length=1, max_length=100)
+    value_type: ValueType = ValueType.NUMERIC
     unit_conversions: dict[str, dict[str, float]] = Field(default_factory=dict)
     valid_min: float | None = None
     valid_max: float | None = None
@@ -105,6 +111,7 @@ class MetricDictionaryUpdate(DomainSchema):
     aliases: list[str] | None = None
     standard_unit: str | None = Field(default=None, max_length=50)
     category: str | None = Field(default=None, min_length=1, max_length=100)
+    value_type: ValueType | None = None
     unit_conversions: dict[str, dict[str, float]] | None = None
     valid_min: float | None = None
     valid_max: float | None = None
@@ -135,6 +142,10 @@ class LabMetricCreate(DomainSchema):
     status: MetricStatus = MetricStatus.UNKNOWN
     normalization_status: NormalizationStatus
     normalization_version: str = Field(min_length=1, max_length=64)
+    value_type: ValueType = ValueType.NUMERIC
+    qualitative_value: str | None = Field(default=None, max_length=100)
+    source_kind: str = Field(default="manual", min_length=1, max_length=32)
+    source_ref: str | None = Field(default=None, max_length=200)
 
     @field_validator("metric_code")
     @classmethod
@@ -146,6 +157,10 @@ class LabMetricCreate(DomainSchema):
         if self.reference_min is not None and self.reference_max is not None:
             if self.reference_min > self.reference_max:
                 raise ValueError("reference_min must not exceed reference_max")
+        if self.value_type is ValueType.QUALITATIVE and not (self.qualitative_value or "").strip():
+            raise ValueError("定性结果必须填写 qualitative_value，不能只留空值")
+        if self.value_type is ValueType.NUMERIC and self.qualitative_value:
+            raise ValueError("数值型指标不能同时填写 qualitative_value，请明确纠正或换算")
         return self
 
 
@@ -163,6 +178,10 @@ class LabMetricUpdate(DomainSchema):
     status: MetricStatus | None = None
     normalization_status: NormalizationStatus | None = None
     normalization_version: str | None = Field(default=None, min_length=1, max_length=64)
+    value_type: ValueType | None = None
+    qualitative_value: str | None = Field(default=None, max_length=100)
+    source_kind: str | None = Field(default=None, min_length=1, max_length=32)
+    source_ref: str | None = Field(default=None, max_length=200)
 
     @field_validator("metric_code")
     @classmethod
@@ -171,7 +190,7 @@ class LabMetricUpdate(DomainSchema):
 
 
 class LabMetricRead(LabMetricCreate, ReadSchema):
-    pass
+    revision_no: int
 
 
 class ImagingExamCreate(DomainSchema):
@@ -180,6 +199,8 @@ class ImagingExamCreate(DomainSchema):
     body_part: str = Field(min_length=1, max_length=100)
     report_text: str | None = None
     exam_date: date
+    source_kind: str = Field(default="manual", min_length=1, max_length=32)
+    source_ref: str | None = Field(default=None, max_length=200)
 
 
 class ImagingExamUpdate(DomainSchema):
@@ -188,10 +209,12 @@ class ImagingExamUpdate(DomainSchema):
     body_part: str | None = Field(default=None, min_length=1, max_length=100)
     report_text: str | None = None
     exam_date: date | None = None
+    source_kind: str | None = Field(default=None, min_length=1, max_length=32)
+    source_ref: str | None = Field(default=None, max_length=200)
 
 
 class ImagingExamRead(ImagingExamCreate, ReadSchema):
-    pass
+    revision_no: int
 
 
 class LesionCreate(DomainSchema):

@@ -72,11 +72,22 @@ class TemplatedLLMProvider(LLMProvider):
             "【模板问答，非模型输出】基于当前档案的结构化记录回答：",
             f"- 已登记发现 {len(context.normalized_findings)} 条、趋势摘要 "
             f"{len(context.trend_summaries)} 条。",
-            "- 可追溯证据条目："
-            + ("、".join(context.evidence_refs) if context.evidence_refs else "（无）"),
-            "- 具体问题需医师结合原始报告确认；本回答不修改任何已保存方案。",
-            f"收到的问题：{request.user_message}",
+            "- 可追溯证据条目（编号与正文成对）：",
         ]
+        pairs = context.evidence_pairs()
+        if pairs:
+            lines.extend(
+                f"  · [EV:{ref_id}] {text}（来源记录：{record_ref or '未标注'}）"
+                for ref_id, text, record_ref in pairs
+            )
+        else:
+            lines.append("  · （无）")
+        lines.extend(
+            [
+                "- 具体问题需医师结合原始报告确认；本回答不修改任何已保存方案。",
+                f"收到的问题：{request.user_message}",
+            ]
+        )
         trace = uuid.uuid5(
             TEMPLATE_NAMESPACE,
             f"chat:{context.patient_id}:{request.user_message}",

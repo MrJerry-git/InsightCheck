@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 VALUE_TYPES = ("numeric", "qualitative", "text")
-COMPARABILITY = ("comparable", "single_observation", "incomparable_unit")
+COMPARABILITY = ("comparable", "single_observation", "incomparable_unit", "missing_unit")
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,8 @@ class Observation:
     reference_population: str | None = None
     expected_qualitative: str | None = None
     report_flag: str | None = None
+    # 人工/上游已确认单位来源时为 True；仅用于说明，不替代单位缺失判定
+    unit_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,7 @@ class NumericMetricSummary:
     unit: str | None
     timeline: list[TimelinePoint] = field(default_factory=list)
     abnormality_count: int = 0
+    missing_unit_refs: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -80,6 +83,7 @@ class NumericMetricSummary:
             "trend_reason": self.trend_reason,
             "unit": self.unit,
             "abnormality_count": self.abnormality_count,
+            "missing_unit_refs": list(self.missing_unit_refs),
             "timeline": [
                 {
                     "observed_at": p.observed_at.isoformat(),
@@ -224,6 +228,57 @@ class SystemGroup:
         }
 
 
+@dataclass(frozen=True)
+class PendingUnitRecord:
+    """待确认单位的单条记录：保留原值/日期/来源，供 AI 与人工追问补齐。
+
+    该记录可能没有可比较数值（#19 对缺单位记录返回 canonical_value=None），
+    但**原始数值与来源必须保留**，否则下游无从追问（PR #21 复核 P1）。
+    """
+
+    record_ref: str
+    observed_at: date
+    raw_value: str
+
+    def as_dict(self) -> dict:
+        return {
+            "record_ref": self.record_ref,
+            "observed_at": self.observed_at.isoformat(),
+            "raw_value": self.raw_value,
+        }
+
+
+@dataclass(frozen=True)
+class MissingUnitItem:
+    """缺单位登记项：保留原值/日期/来源，供对话式追问补齐（PR #21 P1）。
+
+    记录来源是**全部数值原记录**，不要求它先有可比较数值（PR #21 复核 P1）。
+    """
+
+    metric_code: str
+    display_name: str
+    records: tuple[PendingUnitRecord, ...]
+    question: str
+
+    @property
+    def record_refs(self) -> tuple[str, ...]:
+        return tuple(r.record_ref for r in self.records)
+
+    @property
+    def observed_at(self) -> tuple[date, ...]:
+        return tuple(r.observed_at for r in self.records)
+
+    def as_dict(self) -> dict:
+        return {
+            "metric_code": self.metric_code,
+            "display_name": self.display_name,
+            "record_refs": list(self.record_refs),
+            "observed_at": [d.isoformat() for d in self.observed_at],
+            "records": [r.as_dict() for r in self.records],
+            "question": self.question,
+        }
+
+
 @dataclass
 class CrossSystemSummary:
     """H05 输出：多系统汇总 + 异常清单 + 显式说明。"""
@@ -234,6 +289,7 @@ class CrossSystemSummary:
     abnormalities: list[AbnormalityItem] = field(default_factory=list)
     excluded_future_count: int = 0
     excluded_record_refs: list[str] = field(default_factory=list)
+    missing_units: list[MissingUnitItem] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
@@ -244,5 +300,6 @@ class CrossSystemSummary:
             "abnormalities": [a.as_dict() for a in self.abnormalities],
             "excluded_future_count": self.excluded_future_count,
             "excluded_record_refs": list(self.excluded_record_refs),
+            "missing_units": [m.as_dict() for m in self.missing_units],
             "notes": list(self.notes),
         }

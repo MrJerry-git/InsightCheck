@@ -1,10 +1,17 @@
 """H06 多部位术语、影像报告解析与人工修订回算。"""
 
+from dataclasses import dataclass
 from datetime import date
 
 import pytest
 
-from app.features.lesion.imaging_report import ImagingReportParser
+from app.features.lesion.imaging_report import (
+    SECTION_BODY,
+    SECTION_CONCLUSIONS,
+    SECTION_FINDINGS,
+    SECTION_KEYS,
+    ImagingReportParser,
+)
 from app.features.lesion.matcher import LesionMatcher
 from app.features.lesion.revisions import (
     ManualRevision,
@@ -187,6 +194,132 @@ def test_size_single_diameter_extracted() -> None:
     parser = ImagingReportParser()
     result = parser.parse("demo.txt", ["所见：肝内见稍高回声结节，大小约 11 mm，边界清。"])
     assert result.lesion_sentences[0].size_mm == 11.0
+
+
+# ---- 段落切分：段头键名必须统一（PR #23 P1） ----
+
+
+def test_section_header_constants_are_shared_by_split_and_header() -> None:
+    """_split_sections 只建 SECTION_KEYS 里的键，_section_header 只返回这些键。"""
+    parser = ImagingReportParser()
+    sections = parser._split_sections(
+        [(1, "超声所见"), (2, "结节大小约5 mm"), (3, "结论"), (4, "建议复查")]
+    )
+    assert set(sections) == set(SECTION_KEYS)
+    assert sections[SECTION_BODY] == []  # 无正文行
+    assert parser._section_header("超声所见") == SECTION_FINDINGS
+    assert parser._section_header("结论") == SECTION_CONCLUSIONS
+    assert parser._section_header("超声所见：") == SECTION_FINDINGS
+    assert parser._section_header("结论：") == SECTION_CONCLUSIONS
+
+
+def test_header_on_own_line_without_colon() -> None:
+    """审查复现用例：段头独占一行且不带冒号，不得抛 KeyError。"""
+    parser = ImagingReportParser()
+    result = parser.parse(
+        "review-repro.txt",
+        ["超声所见", "甲状腺结节大小约5 mm", "结论", "建议复查"],
+    )
+    assert result.findings == ["甲状腺结节大小约5 mm"]
+    assert result.conclusions == ["建议复查"]
+    assert len(result.lesion_sentences) == 1
+    assert result.lesion_sentences[0].section == SECTION_FINDINGS
+    assert result.lesion_sentences[0].size_mm == 5.0
+
+
+def test_header_on_own_line_with_trailing_colon() -> None:
+    parser = ImagingReportParser()
+    result = parser.parse(
+        "colon-header.txt",
+        ["超声所见：", "甲状腺结节大小约 6 mm。", "超声提示：", "建议随访。"],
+    )
+    assert result.findings == ["甲状腺结节大小约 6 mm。"]
+    assert result.conclusions == ["建议随访。"]
+    assert result.lesion_sentences[0].size_mm == 6.0
+    assert result.lesion_sentences[0].page_line_no == 2
+
+
+def test_inline_header_with_body_on_same_line() -> None:
+    parser = ImagingReportParser()
+    result = parser.parse(
+        "inline.txt",
+        ["超声所见：甲状腺结节大小约 7 mm。", "超声提示：结节，建议复查。"],
+    )
+    assert result.findings == ["甲状腺结节大小约 7 mm。"]
+    assert result.conclusions == ["结节，建议复查。"]
+    sections = {c.section for c in result.lesion_sentences}
+    assert sections == {SECTION_FINDINGS, SECTION_CONCLUSIONS}
+
+
+def test_multi_section_report_mixes_both_header_styles() -> None:
+    """多段报告：带冒号/不带冒号/同行正文混合出现。"""
+    lines = [
+        "超声检查报告单",
+        "检查部位：甲状腺",
+        "超声所见",  # 不带冒号
+        "甲状腺右叶可见低回声结节，大小约 4.2 x 3.1 mm，边界清。",
+        "超声提示：",  # 带冒号
+        "甲状腺右叶结节，建议随访。",
+        "补充：峡部未见明显占位。",
+    ]
+    result = ImagingReportParser().parse("mixed.txt", lines)
+    assert result.exam_type == "超声" and result.body_part == "甲状腺"
+    assert result.findings == ["甲状腺右叶可见低回声结节，大小约 4.2 x 3.1 mm，边界清。"]
+    assert result.conclusions == ["甲状腺右叶结节，建议随访。", "补充：峡部未见明显占位。"]
+    # 所见句子带尺寸，结论句不带尺寸（不能凭空继承尺寸）
+    assert [c.size_mm for c in result.lesion_sentences] == [4.2, None]
+
+
+# ---- H04 抽取结果接入 ----
+
+try:  # H04（PR #20）合入后自动改用真实数据结构
+    from app.report_extraction.schemas import ExtractedLine as _H04ExtractedLine
+except ImportError:  # 本分支尚未合入 H04，用同契约替身
+    _H04ExtractedLine = None
+
+
+@dataclass(frozen=True)
+class _ExtractedLineStub:
+    """与 H04 `ExtractedLine`（page_no/line_no/text）契约一致的最小替身。"""
+
+    page_no: int
+    line_no: int
+    text: str
+
+
+def _h04_extracted_lines(lines: list[str]):
+    """构造 H04 抽取结果：按页拆行，段头常独占一行且不带冒号。"""
+    line_cls = _H04ExtractedLine or _ExtractedLineStub
+    return [
+        line_cls(page_no=1, line_no=no, text=text)
+        for no, text in enumerate(lines, start=1)
+    ]
+
+
+def test_h04_line_split_result_feeds_parser() -> None:
+    """H04 的真实分行结果（ExtractedLine 列表）能直接接入，不抛 KeyError。"""
+    lines = _h04_extracted_lines(
+        [
+            "超声检查报告单",
+            "检查部位：甲状腺",
+            "超声所见",
+            "甲状腺右叶可见低回声结节，大小约 4.2 x 3.1 mm，边界清。",
+            "超声提示",
+            "甲状腺右叶结节，建议随访。",
+        ]
+    )
+    result = ImagingReportParser().parse("h04-doc.pdf", [line.text for line in lines])
+    assert result.findings == ["甲状腺右叶可见低回声结节，大小约 4.2 x 3.1 mm，边界清。"]
+    assert result.conclusions == ["甲状腺右叶结节，建议随访。"]
+    assert result.lesion_sentences[0].size_mm == 4.2
+    assert result.lesion_sentences[0].page_line_no == 4
+
+
+def test_h04_document_lines_keep_page_and_line_locators() -> None:
+    """接入时保留 H04 的页码/行号定位，供人工校对回溯原文。"""
+    lines = _h04_extracted_lines(["超声所见", "甲状腺结节大小约5 mm"])
+    parsed = ImagingReportParser().parse("h04-doc.pdf", [line.text for line in lines])
+    assert parsed.lesion_sentences[0].page_line_no == lines[1].line_no
 
 
 # ---- 人工修订回算 ----

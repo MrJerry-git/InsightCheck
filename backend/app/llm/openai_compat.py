@@ -28,7 +28,8 @@ from app.llm.provider import LLMProvider
 
 SYSTEM_PROMPT = (
     "你是体检报告解释助手。只依据给定的结构化上下文回答，"
-    "引用证据时使用 [EV:<编号>] 格式，编号必须来自上下文的证据列表；"
+    "引用证据时使用 [EV:<编号>] 格式，编号必须来自上下文的证据清单，"
+    "且必须与清单中该编号对应的文字一致，不得把某条证据的结论挂到别的编号上；"
     "不得编造引用、不得输出疾病概率、不得修改任何已保存方案；"
     "回答使用中文，并说明内容不构成诊断。"
 )
@@ -67,7 +68,8 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             f"发现：{context.normalized_findings}\n"
             f"趋势：{context.trend_summaries}\n"
             f"风险：{context.risk_summaries}\n"
-            f"证据编号：{context.evidence_refs}"
+            "证据清单（编号与正文成对给出，引用时编号必须对应该条文字）：\n"
+            f"{context.format_evidence_block()}"
         )
         return await self._chat(
             user_prompt,
@@ -81,7 +83,8 @@ class OpenAICompatibleLLMProvider(LLMProvider):
         user_prompt = (
             f"请解释推荐 {request.recommendation_id} 的依据。\n"
             f"推荐摘要：{context.recommendation_summaries}\n"
-            f"证据编号：{context.evidence_refs}"
+            "证据清单（编号与正文成对给出，引用时编号必须对应该条文字）：\n"
+            f"{context.format_evidence_block()}"
         )
         return await self._chat(
             user_prompt,
@@ -94,7 +97,8 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             "受检者提问，请基于结构化上下文回答。\n"
             f"发现：{context.normalized_findings}\n"
             f"趋势：{context.trend_summaries}\n"
-            f"证据编号：{context.evidence_refs}\n"
+            "证据清单（编号与正文成对给出，引用时编号必须对应该条文字）：\n"
+            f"{context.format_evidence_block()}\n"
             f"问题：{request.user_message}"
         )
         return await self._chat(

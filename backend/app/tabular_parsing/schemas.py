@@ -13,10 +13,15 @@ from typing import Protocol
 ENTRY_STATUSES = (
     "mapped",
     "unit_unconverted",
+    "unit_missing",
     "invalid_value",
     "unregistered_qualitative",
     "unmapped",
 )
+
+# 需要人工确认、且不允许生成可比较数值的状态：下游（H05 趋势、H07 规则）
+# 必须把这些状态当作"不可比较/不可用"，不能回退成标准单位继续计算。
+NON_COMPARABLE_STATUSES = ("unit_missing", "unit_unconverted", "invalid_value")
 
 
 class ConversionLike(Protocol):
@@ -122,6 +127,7 @@ class ParsedMetricEntry:
     text_value: str | None = None
     conversion_basis: str | None = None
     status: str = "unmapped"
+    unit_confirmation_required: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -141,6 +147,7 @@ class ParsedMetricEntry:
             "text_value": self.text_value,
             "conversion_basis": self.conversion_basis,
             "status": self.status,
+            "unit_confirmation_required": self.unit_confirmation_required,
         }
 
 

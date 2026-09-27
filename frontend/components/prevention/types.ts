@@ -6,7 +6,7 @@ export type Visit = {
   glucose_status: "normal" | "prediabetes" | "diabetes" | "unknown";
 };
 export type Intake = {
-  label: string; sex: "female" | "male"; known_cvd: boolean | null;
+  label: string; sex: "female" | "male" | ""; known_cvd: boolean | null;
   pregnant: boolean | null; symptomatic: boolean | null;
   source: "synthetic" | "manual" | "public_dataset";
   source_note: string; as_of: string; visits: Visit[];
