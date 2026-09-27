@@ -28,7 +28,7 @@
 | --- | --- |
 | `profile_id` | 独立体检档案 ID（UUID 字符串）。一个人一份，禁止跨人自动合并。 |
 | `display_name` | 当前档案显示名称（前端“当前档案”入口使用），例如“体检档案 2026-09-21”“第二位体检人”。 |
-| `session_id` | 会话 ID。新建档案或“重新开始整理”都会生成新会话。 |
+| `session_id` | 会话 ID。新建档案或“重新开始整理”都会生成新会话。改变状态的操作（`messages`/`confirm`/`plan`/`restart`）必须携带当前会话 ID，省略不生效（见第 15 节）。 |
 | `record_id` | 稳定记录 ID（`v-xxxxxxxx`）：从草稿创建起固定，不依赖列表顺序。 |
 | `message_id` / `user_message_id` | 消息 ID，用于回放与幂等。 |
 | `op_id` | 操作 ID（幂等键，客户端生成，1–80 字符）。所有写操作必填。 |
@@ -179,6 +179,8 @@ current（最新，指向 version N）──新版本确认/修改/重规划─�
 - `save=no`：直接新建；只放弃当前页面未保存的工作区内容，不删除旧档案快照。
 - `cancel`：返回当前档案原状态（`created=false`, `cancelled=true`），不新建、不改动。
 - 幂等：同一 `(来源档案, op_id)` 重复请求返回第一次结果，不产生多个档案（验收 18）。
+- 归属：`save_current.profile_id` 必须是当前账号自己的档案。引用他人档案（或不存在的
+  档案）时，`cancel`/`yes`/`no` 与重复 `op_id` 全部返回 **404**，不返回对方状态。
 - `display_name` 省略时自动生成“体检档案 YYYY-MM-DD”，重名自动加序号。
 
 响应 `201`（拒绝时为 `400`）：
@@ -524,12 +526,15 @@ POST messages（另一 worker 正在处理）→ 429 {error:"processing"}
    `draft_version`。若期间草稿被其它请求推进，服务端返回 **409**
    `version_conflict`，响应含 `current_draft_version` 与 `expected_draft_version`，
    前端必须提示"内容已更新，请重新核对"并刷新页面，不得重试同一版本。
-2. **会话绑定**：`messages`/`confirm`/`restart`/`plan` 可携带 `session_id`
-   （取 `GET state` 的 `session_id`）。携带旧会话 id 的迟到请求返回 **409**，
-   响应含 `current_session_id`；前端应丢弃该响应，不能写入当前工作区。
+2. **会话绑定**：`messages`/`confirm`/`restart`/`plan` 的 `session_id` 为**必填**
+   （取最近一次 `GET state` 或接口响应里的 `session_id`）；省略时为 **422**，
+   携带旧会话 id 的迟到请求返回 **409**，响应含 `current_session_id`。
+   前端应丢弃 409 响应，不能写入当前工作区；任何改变状态的操作都不能省略会话绑定。
 3. **鉴权与归属**：全部对话端点都需要 `Authorization: Bearer <token>`（与 T01 一致）；
    未登录返回 **401**，访问他人档案与不存在同样返回 **404**（不泄露是否存在）。
    `POST /profiles` 创建的档案自动归属当前账号，`GET /profiles` 只返回本账号档案。
+   `POST /profiles` 的 `save_current.profile_id` 同样做归属校验：引用他人档案返回
+   **404**，不能读出对方的档案、草稿或消息。
 4. **确认后清空与点亮**：人体点亮、系统历史与规划只认 `confirmed_data`；
    草稿版本变化不得改变已确认内容与已保存规划。
 
@@ -541,4 +546,6 @@ POST messages（另一 worker 正在处理）→ 429 {error:"processing"}
 | 用当前 `draft_version` 确认 | 200，`confirmed_data` 等于该版本草稿内容 |
 | `restart` 后旧会话再发消息 | 409，新会话无这条消息 |
 | 账号 B 访问账号 A 的档案 | 404；`GET /profiles` 列表不含 A 的档案 |
+| `messages`/`confirm`/`plan`/`restart` 省略 `session_id` | 422，请求不生效 |
+| 账号 B 用 `save_current.profile_id` 指向 A 的档案（cancel/yes/no/重复 op_id） | 404，不返回 A 的档案、草稿、消息或会话 |
 | `AUTH_REQUIRED=true` 且匿名请求 | 401 |

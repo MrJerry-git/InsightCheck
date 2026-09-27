@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 
 from app.api.routes import conversation as route
-from tests.conversation.conftest import BASE, create_profile, send
+from tests.conversation.conftest import BASE, create_profile, send, session_of
 from tests.conversation.test_conversation_flow import confirmed, visit_2025
 
 STATE_FIELDS = {
@@ -65,12 +65,14 @@ def test_unknown_profile_returns_404(client, model):
     missing = "00000000-0000-0000-0000-000000000000"
     assert client.get(f"{BASE}/profiles/{missing}/state").status_code == 404
     assert client.post(f"{BASE}/profiles/{missing}/confirm",
-                       json={"op_id": "x", "expected_draft_version": 0}).status_code == 404
+                       json={"op_id": "x", "expected_draft_version": 0,
+                             "session_id": "s-missing"}).status_code == 404
     assert client.post(f"{BASE}/profiles/{missing}/plan",
-                       json={"op_id": "x"}).status_code == 404
+                       json={"op_id": "x", "session_id": "s-missing"}).status_code == 404
     assert client.get(f"{BASE}/profiles/{missing}/plans").status_code == 404
     assert client.post(f"{BASE}/profiles/{missing}/messages",
-                       json={"op_id": "x", "text": "你好"}).status_code == 404
+                       json={"op_id": "x", "text": "你好",
+                             "session_id": "s-missing"}).status_code == 404
     error = client.get(f"{BASE}/profiles/{missing}/state").json()
     assert error["error"] == "not_found" and error["detail"]
 
@@ -92,7 +94,8 @@ def test_busy_returns_429_without_writing(client, model):
     route.lock.acquire()
     try:
         response = client.post(f"{BASE}/profiles/{profile['profile_id']}/messages",
-                               json={"op_id": "c4-msg", "text": "你好"})
+                               json={"op_id": "c4-msg", "text": "你好",
+                                     "session_id": profile["session_id"]})
         assert response.status_code == 429
         assert response.json()["error"] == "processing"
     finally:
@@ -106,12 +109,14 @@ def test_model_error_maps_to_business_status(client, model):
     profile = create_profile(client, "c5")
     model.error = httpx.ConnectError("offline")
     response = client.post(f"{BASE}/profiles/{profile['profile_id']}/messages",
-                           json={"op_id": "c5-msg", "text": "2025-09-20 体检：血压 138"})
+                           json={"op_id": "c5-msg", "text": "2025-09-20 体检：血压 138",
+                                 "session_id": profile["session_id"]})
     assert response.status_code == 503
     assert response.json()["error"] == "model_unavailable"
     model.error = httpx.ReadTimeout("slow")
     timeout = client.post(f"{BASE}/profiles/{profile['profile_id']}/messages",
-                          json={"op_id": "c5-timeout", "text": "2025-09-20 体检：血压 138"})
+                          json={"op_id": "c5-timeout", "text": "2025-09-20 体检：血压 138",
+                                "session_id": profile["session_id"]})
     assert timeout.status_code == 504
     assert timeout.json()["error"] == "timeout"
     model.error = None
@@ -143,7 +148,8 @@ def test_validation_failure_keeps_draft(client, model):
     failed = client.post(
         f"{BASE}/profiles/{profile['profile_id']}/confirm",
         json={"op_id": "c6-confirm-partial",
-              "expected_draft_version": draft_state["draft_version"]})
+              "expected_draft_version": draft_state["draft_version"],
+              "session_id": session_of(client, profile["profile_id"])})
     assert failed.status_code == 422
     body = failed.json()
     assert body["error"] == "validation_failed"
@@ -158,7 +164,8 @@ def test_validation_failure_keeps_draft(client, model):
 def test_snapshot_read_only_and_not_found(client, model):
     profile, _ = confirmed(client, model, [visit_2025()], prefix="c7")
     plan = client.post(f"{BASE}/profiles/{profile['profile_id']}/plan",
-                       json={"op_id": "c7-plan"}).json()
+                       json={"op_id": "c7-plan",
+                             "session_id": profile["session_id"]}).json()
     view = client.get(f"{BASE}/profiles/{profile['profile_id']}"
                       f"/plans/{plan['snapshot_id']}").json()
     assert view["read_only"] is True
@@ -176,15 +183,18 @@ def test_snapshot_read_only_and_not_found(client, model):
 def test_plan_is_idempotent_and_version_checked(client, model):
     profile, _ = confirmed(client, model, [visit_2025()], prefix="c8")
     first = client.post(f"{BASE}/profiles/{profile['profile_id']}/plan",
-                        json={"op_id": "c8-plan", "expected_version": 1})
+                        json={"op_id": "c8-plan", "expected_version": 1,
+                              "session_id": profile["session_id"]})
     second = client.post(f"{BASE}/profiles/{profile['profile_id']}/plan",
-                         json={"op_id": "c8-plan", "expected_version": 1})
+                         json={"op_id": "c8-plan", "expected_version": 1,
+                               "session_id": profile["session_id"]})
     assert first.status_code == 200 and second.status_code == 200
     assert first.json() == second.json()
     assert len(client.get(f"{BASE}/profiles/{profile['profile_id']}/plans").json()) == 1
 
     conflict = client.post(f"{BASE}/profiles/{profile['profile_id']}/plan",
-                           json={"op_id": "c8-plan-2", "expected_version": 0})
+                           json={"op_id": "c8-plan-2", "expected_version": 0,
+                                 "session_id": profile["session_id"]})
     assert conflict.status_code == 409
     assert conflict.json()["error"] == "version_conflict"
     assert conflict.json()["current_version"] == 1

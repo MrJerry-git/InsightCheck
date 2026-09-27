@@ -142,9 +142,18 @@ def _guard_draft_version(ws: S.Workspace, expected: int | None) -> None:
 
 
 def _guard_session(ws: S.Workspace, session_id: str | None) -> None:
-    """会话绑定：旧会话的迟到请求不能写入新会话（审核 P1）。"""
+    """会话绑定：改变状态的操作必须声明会话，且旧会话的迟到请求不能写入。
 
-    if session_id and session_id != ws.session_id:
+    审核 P1：只在 ``session_id`` 非空时校验，等于省略字段即可绕开旧会话保护，
+    因此这里把「缺少会话标识」也当作冲突处理。
+    """
+
+    if not session_id:
+        raise VersionConflict(
+            "该操作必须绑定当前会话标识（session_id），请先读取档案状态后再提交。",
+            details={"error": "missing_session_id", "current_session_id": ws.session_id},
+        )
+    if session_id != ws.session_id:
         raise VersionConflict(
             "该会话已被新的会话替换，请以当前会话为准。",
             details={"current_session_id": ws.session_id,
@@ -653,10 +662,15 @@ def _answer_delete(db: Session, ws: S.Workspace, row, payload: dict, text: str,
 
 
 def create_profile(db: Session, body: NewProfileRequest, *, today: date | None = None,
-                   account_id: str | None = None) -> tuple[int, dict]:
+                   account_id: str | None = None, is_admin: bool = False
+                   ) -> tuple[int, dict]:
     today = today or date.today()
     option = body.save_current
     source_id = option.profile_id if option else None
+    # 审核 P1：来源档案先做归属校验，再处理 cancel/save/replay；
+    # 否则别的账号可以用自己的 op_id 引用他人档案，读出甚至推进对方的会话。
+    if source_id:
+        ensure_profile_access(db, source_id, account_id, is_admin=is_admin)
     if option is not None and option.save == "cancel":
         if source_id:
             ws = S.load_workspace(db, source_id)

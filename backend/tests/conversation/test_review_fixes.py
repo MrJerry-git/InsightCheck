@@ -8,12 +8,19 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.models.enums import AccountRole
 from app.services.auth_service import AuthService
-from tests.conversation.conftest import BASE, create_profile, make_report, send
+from tests.conversation.conftest import (
+    BASE,
+    create_profile,
+    make_report,
+    send,
+    session_of,
+)
 from tests.conversation.test_conversation_flow import visit_2025
 
 DOCTOR_PASSWORD = "Doctor-Pass-2026!"
@@ -60,7 +67,8 @@ def test_confirm_must_match_current_draft_version(client, model):
 
     stale = client.post(
         f"{BASE}/profiles/{profile['profile_id']}/confirm",
-        json={"op_id": "rv-confirm-stale", "expected_draft_version": stale_version},
+        json={"op_id": "rv-confirm-stale", "expected_draft_version": stale_version,
+              "session_id": second["session_id"]},
     )
     assert stale.status_code == 409, stale.text
     body = stale.json()
@@ -75,6 +83,7 @@ def test_confirm_must_match_current_draft_version(client, model):
         json={
             "op_id": "rv-confirm-fresh",
             "expected_draft_version": second["draft_version"],
+            "session_id": second["session_id"],
         },
     )
     assert fresh.status_code == 200, fresh.text
@@ -88,12 +97,44 @@ def test_confirm_requires_expected_draft_version(client, model):
 
     profile, _ = draft_profile(client, model, "rq")
     missing = client.post(
-        f"{BASE}/profiles/{profile['profile_id']}/confirm", json={"op_id": "rq-confirm"}
+        f"{BASE}/profiles/{profile['profile_id']}/confirm",
+        json={"op_id": "rq-confirm", "session_id": session_of(client, profile["profile_id"])},
     )
     assert missing.status_code == 422
     assert any(
         error["loc"][-1] == "expected_draft_version" for error in missing.json()["detail"]
     )
+
+
+def test_state_changing_requests_require_session_id(client, db_session, model):
+    """审核 P1：省略 session_id 不再能绕开会话绑定，接口明确拒绝。"""
+
+    profile, state = draft_profile(client, model, "sq")
+    pid = profile["profile_id"]
+    rejections = [
+        client.post(f"{BASE}/profiles/{pid}/messages",
+                    json={"op_id": "sq-msg", "text": "你好"}),
+        client.post(f"{BASE}/profiles/{pid}/confirm",
+                    json={"op_id": "sq-confirm", "expected_draft_version": 1}),
+        client.post(f"{BASE}/profiles/{pid}/plan", json={"op_id": "sq-plan"}),
+        client.post(f"{BASE}/profiles/{pid}/restart", json={"op_id": "sq-restart"}),
+    ]
+    for response in rejections:
+        assert response.status_code == 422, response.text
+        assert any(
+            error["loc"][-1] == "session_id" for error in response.json()["detail"]
+        )
+    # 服务层同样拒绝缺少会话标识的调用（防御性检查，不只靠请求模型）。
+    from app.services.conversation import store as S
+    from app.services.conversation.errors import VersionConflict
+    from app.services.conversation.orchestrator import _guard_session
+
+    ws = S.load_workspace(db_session, pid)
+    with pytest.raises(VersionConflict) as excinfo:
+        _guard_session(ws, None)
+    assert "session_id" in excinfo.value.message
+    assert excinfo.value.details["current_session_id"] == state["session_id"]
+    assert state["session_id"]
 
 
 def test_old_session_cannot_write_after_restart(client, model):
@@ -149,7 +190,7 @@ def test_profiles_are_scoped_to_owner_account(test_app, db_session, model):
         assert (
             client.post(
                 f"{BASE}/profiles/{profile_id}/messages",
-                json={"op_id": "own-msg", "text": "你好"},
+                json={"op_id": "own-msg", "text": "你好", "session_id": "s-other"},
                 headers=headers_other,
             ).status_code
             == 404
@@ -167,3 +208,57 @@ def test_conversation_routes_require_token_when_auth_required(monkeypatch, test_
         assert client.get(f"{BASE}/profiles").status_code == 401
         assert client.post(f"{BASE}/profiles", json={"op_id": "anon"}).status_code == 401
         assert client.get(f"{BASE}/profiles/whatever/state").status_code == 401
+
+
+def test_new_profile_rejects_foreign_source_profile(test_app, db_session):
+    """审核 P1 复现：B 用 save_current 引用 A 的档案时，cancel/yes/no/replay 都 404。"""
+
+    make_account(db_session, "scope-a")
+    make_account(db_session, "scope-b")
+    with TestClient(test_app) as client:
+        headers_a = login(client, "scope-a")
+        headers_b = login(client, "scope-b")
+        created = client.post(
+            f"{BASE}/profiles",
+            json={"op_id": "scope-a-create", "display_name": "A 的档案"},
+            headers=headers_a,
+        )
+        assert created.status_code == 201, created.text
+        a_id = created.json()["profile_id"]
+
+        # A 自己新建一次，留下一个 B 可以尝试复用的 op_id（replay 分支）。
+        a_next = client.post(
+            f"{BASE}/profiles",
+            json={"op_id": "shared-op", "save_current": {"profile_id": a_id, "save": "no"}},
+            headers=headers_a,
+        )
+        assert a_next.status_code == 201, a_next.text
+
+        for save in ("cancel", "yes", "no"):
+            response = client.post(
+                f"{BASE}/profiles",
+                json={
+                    "op_id": f"foreign-{save}",
+                    "save_current": {"profile_id": a_id, "save": save},
+                },
+                headers=headers_b,
+            )
+            assert response.status_code == 404, response.text
+            assert response.json()["error"] == "not_found"
+            # 404 之外不能泄漏他人档案内容。
+            assert "confirmed_data" not in response.text
+            assert "session_id" not in response.text
+
+        # 复用 A 用过的 op_id 也不能绕过归属校验。
+        replay = client.post(
+            f"{BASE}/profiles",
+            json={"op_id": "shared-op", "save_current": {"profile_id": a_id, "save": "no"}},
+            headers=headers_b,
+        )
+        assert replay.status_code == 404, replay.text
+
+        # B 名下仍只有自己的空列表；A 的档案与内容不受影响。
+        assert client.get(f"{BASE}/profiles", headers=headers_b).json() == []
+        a_state = client.get(f"{BASE}/profiles/{a_id}/state", headers=headers_a).json()
+        assert a_state["profile_id"] == a_id
+        assert len(client.get(f"{BASE}/profiles", headers=headers_a).json()) == 2

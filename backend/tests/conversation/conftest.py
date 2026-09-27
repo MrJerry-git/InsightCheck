@@ -173,9 +173,16 @@ def create_profile(client: TestClient, op_id: str = "op-create") -> dict:
     return response.json()
 
 
+def session_of(client: TestClient, profile_id: str) -> str:
+    """改变状态的请求必须绑定当前会话（审核 P1）。"""
+
+    return client.get(f"{BASE}/profiles/{profile_id}/state").json()["session_id"]
+
+
 def send(client: TestClient, profile_id: str, text: str, op_id: str,
          **kwargs) -> dict:
-    body = {"op_id": op_id, "text": text, **kwargs}
+    session_id = kwargs.pop("session_id", None) or session_of(client, profile_id)
+    body = {**kwargs, "op_id": op_id, "text": text, "session_id": session_id}
     response = client.post(f"{BASE}/profiles/{profile_id}/messages", json=body)
     assert response.status_code == 200, response.text
     return response.json()
@@ -189,11 +196,22 @@ def confirm(client: TestClient, profile_id: str, op_id: str, expected_version: i
         state = client.get(f"{BASE}/profiles/{profile_id}/state").json()
         expected_draft_version = state.get("draft_version", 0)
     body = {"op_id": op_id, "expected_version": expected_version,
-            "expected_draft_version": expected_draft_version}
-    if session_id is not None:
-        body["session_id"] = session_id
+            "expected_draft_version": expected_draft_version,
+            "session_id": session_id or session_of(client, profile_id)}
     return client.post(f"{BASE}/profiles/{profile_id}/confirm",
                        json=body)
+
+
+def plan(client: TestClient, profile_id: str, op_id: str, **kwargs):
+    session_id = kwargs.pop("session_id", None) or session_of(client, profile_id)
+    body = {**kwargs, "op_id": op_id, "session_id": session_id}
+    return client.post(f"{BASE}/profiles/{profile_id}/plan", json=body)
+
+
+def restart(client: TestClient, profile_id: str, op_id: str, **kwargs):
+    session_id = kwargs.pop("session_id", None) or session_of(client, profile_id)
+    body = {**kwargs, "op_id": op_id, "session_id": session_id}
+    return client.post(f"{BASE}/profiles/{profile_id}/restart", json=body)
 
 
 def stored_confirmed(client: TestClient, profile_id: str) -> dict | None:

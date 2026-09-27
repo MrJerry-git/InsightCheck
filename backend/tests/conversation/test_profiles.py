@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.services.conversation import plans as PL
-from tests.conversation.conftest import BASE, make_report, send
+from tests.conversation.conftest import BASE, make_report, send, session_of
 from tests.conversation.test_conversation_flow import (
     PROFILE,
     confirmed,
@@ -21,7 +21,7 @@ def new_profile(client, op_id: str, *, save: str = "no", profile_id: str | None 
 
 
 def plan(client, profile_id: str, op_id: str, expected_version: int | None = None):
-    body = {"op_id": op_id}
+    body = {"op_id": op_id, "session_id": session_of(client, profile_id)}
     if expected_version is not None:
         body["expected_version"] = expected_version
     return client.post(f"{BASE}/profiles/{profile_id}/plan", json=body)
@@ -157,7 +157,8 @@ def test_two_people_do_not_inherit_data(client, model):
     done = client.post(
         f"{BASE}/profiles/{pid}/confirm",
         json={"op_id": "H-confirm", "expected_version": 0,
-              "expected_draft_version": 1}).json()
+              "expected_draft_version": 1,
+              "session_id": session_of(client, pid)}).json()
     assert done["profile_id"] == pid
     assert len(done["confirmed_data"]["visits"]) == 1
     assert done["confirmed_data"]["sex"] == "female"
@@ -201,7 +202,8 @@ def test_late_response_of_old_profile_does_not_touch_new(client, model):
     late = client.post(
         f"{BASE}/profiles/{old['profile_id']}/confirm",
         json={"op_id": "J-late", "expected_version": 99,
-              "expected_draft_version": old_state["draft_version"]})
+              "expected_draft_version": old_state["draft_version"],
+              "session_id": old_state["session_id"]})
     assert late.status_code == 409
     late_ok = send(client, old["profile_id"], "补充：检查日期是 2025-09-19",
                    "J-late-msg")
@@ -236,7 +238,8 @@ def test_pending_action_cannot_leak_across_profiles(client, model):
     assert ask["pending_actions"]
     fresh = new_profile(client, "L-new", save="no", profile_id=old["profile_id"]).json()
     leaked = client.post(f"{BASE}/profiles/{fresh['profile_id']}/messages",
-                         json={"op_id": "L-leak", "text": "确认删除"})
+                         json={"op_id": "L-leak", "text": "确认删除",
+                               "session_id": session_of(client, fresh["profile_id"])})
     assert leaked.status_code == 200
     assert leaked.json()["confirmed_data"] is None
     assert leaked.json()["pending_actions"] == []
@@ -292,7 +295,8 @@ def test_restart_keeps_current_profile_but_clears_draft(client, model):
     assert ask["pending_actions"]
 
     restarted = client.post(f"{BASE}/profiles/{profile['profile_id']}/restart",
-                            json={"op_id": "P-restart"})
+                            json={"op_id": "P-restart",
+                                  "session_id": session_of(client, profile["profile_id"])})
     assert restarted.status_code == 200, restarted.text
     body = restarted.json()
     assert body["profile_id"] == profile["profile_id"]

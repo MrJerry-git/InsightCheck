@@ -71,7 +71,13 @@ def profiles(db: DB, principal: Caller):
 @router.post("/profiles", status_code=201)
 def create_profile(body: NewProfileRequest, db: DB, principal: Caller):
     account_id = principal.account_id if principal.authenticated else None
-    return _run(lambda: O.create_profile(db, body, account_id=account_id))
+    # 新建档案时引用的来源档案同样要过归属校验：跨账号引用返回 404（审核 P1）。
+    source_id = body.save_current.profile_id if body.save_current else None
+    return _run(
+        lambda: O.create_profile(db, body, account_id=account_id,
+                                 is_admin=principal.is_admin),
+        guard=(lambda: _guard(db, source_id, principal)) if source_id else None,
+    )
 
 
 def _guard(db: Session, profile_id: str, principal: Principal) -> None:
