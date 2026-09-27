@@ -14,6 +14,8 @@ from app.llm.citations import (
 )
 from app.llm.contracts import (
     EvidenceItem as StructuredEvidenceItem,
+)
+from app.llm.contracts import (
     HealthSummaryRequest,
     LLMResponse,
     PatientChatRequest,

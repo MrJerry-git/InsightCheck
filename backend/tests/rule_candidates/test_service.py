@@ -1,6 +1,7 @@
 """H07 规则候选：触发、去重、排序、缺失信息与排除记录。"""
 
 from datetime import date
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,6 +12,9 @@ from app.rule_candidates import (
     RuleCandidateService,
     load_rule_content,
 )
+
+if TYPE_CHECKING:
+    from app.rule_candidates import RuleContentItem
 
 
 def finding(
