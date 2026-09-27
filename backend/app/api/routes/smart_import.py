@@ -1,22 +1,25 @@
 import json
 import threading
+from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
+from app.api.dependencies import Principal, require_write_access
 from app.core.config import get_settings
 from app.schemas.prevention import PreventionRequest
 from app.schemas.smart_import import ConfirmRequest, ImportRequest
 from app.services.smart_import import extract
 
 router = APIRouter(prefix="/prevention/smart-import", tags=["智能资料导入"])
+Caller = Annotated[Principal, Depends(require_write_access)]
 lock = threading.Lock()
 
 
 @router.get("/status")
-def status():
+def status(principal: Caller):
     settings = get_settings()
     try:
         with httpx.Client(timeout=3, trust_env=False) as client:
@@ -32,7 +35,7 @@ def status():
 
 
 @router.post("/extract")
-async def extraction(request: Request):
+async def extraction(request: Request, principal: Caller):
     data = bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
@@ -62,7 +65,7 @@ async def extraction(request: Request):
 
 
 @router.post("/confirm")
-def confirm(body: ConfirmRequest):
+def confirm(body: ConfirmRequest, principal: Caller):
     try:
         intake = PreventionRequest.model_validate(body.intake)
     except ValidationError as exc:

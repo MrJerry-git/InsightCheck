@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     import_model_url: str = "http://127.0.0.1:11434"
     import_model: str = "qwen3-vl:4b-instruct"
     import_model_timeout: float = 240
+    # T01：鉴权开关与账号策略。默认关闭，使本地开发与既有 1.0 流程保持匿名管理员；
+    # 生产部署与联合验收前必须显式开启，否则业务接口不校验登录。
+    auth_required: bool = False
+    session_ttl_minutes: int = 720
+    password_hash_iterations: int | None = None
 
     @field_validator("import_model_url")
     @classmethod
@@ -31,6 +36,20 @@ class Settings(BaseSettings):
                 or parsed.username or parsed.password or parsed.query or parsed.fragment
                 or parsed.path not in ("", "/")):
             raise ValueError("智能导入仅允许本机 HTTP Ollama 地址")
+        return value
+
+    @field_validator("session_ttl_minutes")
+    @classmethod
+    def session_ttl_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("会话有效期必须为正整数分钟")
+        return value
+
+    @field_validator("password_hash_iterations")
+    @classmethod
+    def iterations_positive(cls, value: int | None) -> int | None:
+        if value is not None and value < 1000:
+            raise ValueError("口令迭代次数不得低于 1000")
         return value
 
     @property

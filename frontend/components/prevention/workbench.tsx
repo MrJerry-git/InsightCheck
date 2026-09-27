@@ -108,7 +108,7 @@ export function PreventionWorkbench() {
         <div className="pv-section-heading"><div><span className="pv-eyebrow">01 / INPUT</span><h2>确认体检档案</h2></div><span className="pv-pill">{input.visits.length} 次记录</span></div>
         <div className="pv-grid">
           <label>档案代号（避免真实姓名）<input required maxLength={80} value={input.label} onChange={e => change({ ...input, label: e.target.value })} /></label>
-          <label>模型使用的生理性别<select value={input.sex} onChange={e => change({ ...input, sex: e.target.value as Intake["sex"] })}><option value="female">女</option><option value="male">男</option></select></label>
+          <label>模型使用的生理性别<select required value={input.sex} onChange={e => change({ ...input, sex: e.target.value as Intake["sex"] })}><option value="">请选择 / 待确认</option><option value="female">女</option><option value="male">男</option></select></label>
           <label>评估日期<input required type="date" value={input.as_of} onChange={e => change({ ...input, as_of: e.target.value })} /></label>
           <label>资料来源<select value={input.source} onChange={e => change({ ...input, source: e.target.value as Intake["source"] })}><option value="synthetic">人工构造示例</option><option value="manual">手动录入已确认资料</option><option value="public_dataset">公开数据集</option></select></label>
         </div>

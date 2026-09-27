@@ -12,10 +12,16 @@ from app.features.lesion.terminology import LesionTerminology
 
 
 class LesionMatcher:
-    """将同一批次结构化病灶与既有轨迹进行可解释匹配。"""
+    """将同一批次结构化病灶与既有轨迹进行可解释匹配。
+
+    terminology 可注入多部位扩展配置（H06）；缺省为内置肺部词表。
+    """
+
+    def __init__(self, terminology: LesionTerminology | None = None) -> None:
+        self._terminology = terminology
 
     def match(self, request: LesionMatchingRequest) -> LesionMatchingResult:
-        scorer = LesionScorer(request.config)
+        scorer = LesionScorer(request.config, terminology=self._terminology)
         pair_scores = [
             scorer.score(current, track)
             for current in request.current_lesions

@@ -1,0 +1,9 @@
+{
+  "package_id": "demo-basic-checkup",
+  "version": "1.0",
+  "institution": "演示机构（工程联调用，不代表任何真实机构套餐）",
+  "exam_item_codes": ["IC:EX-ECG", "IC:EX-US-ABDOMEN", "IC:EX-DR-CHEST"],
+  "notes": "演示机构套餐机制：套餐仅引用已登记的 exam_item 编码，通过版本化配置表达不同机构差异",
+  "source": "IC 演示配置",
+  "source_version": "1.0"
+}

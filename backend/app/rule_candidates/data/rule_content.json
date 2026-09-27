@@ -1,0 +1,180 @@
+{
+  "content_version": "rule-content-v1",
+  "generated_at": "2026-09-20",
+  "maintainer": "王宏锦（WHJ-2007），任务 H07",
+  "scope_note": "首批规则内容。全部 status=draft、review_status=pending_review：未经医学审核的规则不默认启用，由管理端（T08）审核后置为 enabled。参考资料是规则依据，不是训练用病例数据。reason_template 可用占位符：{condition} {value} {exam}。",
+  "entries": [
+    {
+      "rule_code": "RU-GLU-RECHECK",
+      "version": "1.0",
+      "priority": 10,
+      "applies_to_condition": "E11.9",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["1558-6", "4548-4"],
+      "reason_template": "空腹血糖升高（{value}）提示糖代谢异常，建议复查空腹血糖并检测糖化血红蛋白",
+      "source": "中国2型糖尿病防治指南（2020年版）整理",
+      "source_version": "v0-draft-2026-09-20",
+      "conflict_group": "glucose-followup",
+      "missing_info_prompt": "糖化血红蛋白检测方法学差异较大，结果解读需登记本机构区间"
+    },
+    {
+      "rule_code": "RU-GLU-IFG-RECHECK",
+      "version": "1.0",
+      "priority": 20,
+      "applies_to_condition": "R73.0",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["1558-6"],
+      "reason_template": "空腹血糖处于受损范围（{value}），建议复查并评估 OGTT（项目目录待登记）",
+      "source": "中国2型糖尿病防治指南（2020年版）整理",
+      "source_version": "v0-draft-2026-09-20",
+      "conflict_group": "glucose-followup",
+      "missing_info_prompt": "OGTT 项目尚未登记目录，无法生成对应候选"
+    },
+    {
+      "rule_code": "RU-LIPID-PANEL",
+      "version": "1.0",
+      "priority": 20,
+      "applies_to_condition": "E78.5",
+      "trigger_directions": ["high", "low"],
+      "recommended_exam_codes": ["2093-3", "2571-8", "2085-9", "13457-7"],
+      "reason_template": "血脂异常提示（{condition}，{value}），建议空腹复查血脂四项",
+      "source": "中国成人血脂异常防治指南（2016年修订版）整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-BP-RECHECK",
+      "version": "1.0",
+      "priority": 10,
+      "applies_to_condition": "I10",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["8480-6", "8462-4", "IC:EX-ECG"],
+      "reason_template": "血压偏高（{value}）提示高血压可能，建议非同日复测血压并行心电图检查",
+      "source": "中国高血压防治指南（2018年修订版）整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-UA-RECHECK",
+      "version": "1.0",
+      "priority": 20,
+      "applies_to_condition": "E79.0",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["3084-1"],
+      "reason_template": "血尿酸升高（{value}）提示高尿酸血症，建议空腹复查",
+      "source": "中国高尿酸血症与痛风诊疗指南（2019）整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-ANEMIA-RECHECK",
+      "version": "1.0",
+      "priority": 20,
+      "applies_to_condition": "D64.9",
+      "trigger_directions": ["low"],
+      "recommended_exam_codes": ["718-7", "2951-2"],
+      "reason_template": "血红蛋白降低（{value}）提示贫血（{condition}），建议复查血常规并明确贫血原因",
+      "source": "诊断学通用整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-IDA-WORKUP",
+      "version": "1.0",
+      "priority": 25,
+      "applies_to_condition": "D50.9",
+      "trigger_directions": ["low"],
+      "recommended_exam_codes": ["718-7", "2951-2", "785-6"],
+      "reason_template": "小细胞低色素改变提示缺铁性贫血可能（{condition}），建议复查并补做铁代谢检查",
+      "source": "诊断学通用整理",
+      "source_version": "v0-draft-2026-09-20",
+      "missing_info_prompt": "血清铁蛋白等铁代谢项目尚未登记目录，无法生成对应候选"
+    },
+    {
+      "rule_code": "RU-LIVER-PANEL",
+      "version": "1.0",
+      "priority": 15,
+      "applies_to_condition": "R74.0",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["1742-6", "1920-8", "2324-2", "5196-1"],
+      "reason_template": "转氨酶升高（{value}）提示肝细胞损伤可能，建议复查肝酶并筛查乙型肝炎",
+      "source": "诊断学通用整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-THYROID-HYPO",
+      "version": "1.0",
+      "priority": 20,
+      "applies_to_condition": "E03.9",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["3016-3", "3024-7"],
+      "reason_template": "TSH 升高提示甲状腺功能减退可能（{condition}），建议复查并加测游离甲状腺素",
+      "source": "甲状腺诊疗共识整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-THYROID-HYPER",
+      "version": "1.0",
+      "priority": 20,
+      "applies_to_condition": "E05.9",
+      "trigger_directions": ["low"],
+      "recommended_exam_codes": ["3016-3", "3024-7", "2069-3"],
+      "reason_template": "TSH 降低提示甲状腺功能亢进可能（{condition}），建议复查甲状腺功能全套",
+      "source": "甲状腺诊疗共识整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-PROTEINURIA-RECHECK",
+      "version": "1.0",
+      "priority": 15,
+      "applies_to_condition": "N06.9",
+      "trigger_directions": ["qualitative_positive"],
+      "recommended_exam_codes": ["20454-5", "2965-2", "IC:M-URINE-MICROSCOPY"],
+      "reason_template": "尿蛋白阳性（{value}）提示肾脏损伤可能，建议复查尿常规并结合尿沉渣镜检",
+      "source": "诊断学通用整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-FOB-RECHECK",
+      "version": "1.0",
+      "priority": 10,
+      "applies_to_condition": "IC:C-CRC-SCREEN",
+      "trigger_directions": ["qualitative_positive"],
+      "recommended_exam_codes": ["IC:M-STOOL-OCCULT-BLOOD"],
+      "reason_template": "便潜血阳性（{value}）属结直肠癌筛查线索，建议复查便潜血并按筛查路径评估肠镜",
+      "source": "结直肠癌筛查共识整理",
+      "source_version": "v0-draft-2026-09-20",
+      "missing_info_prompt": "肠镜项目尚未登记目录，无法生成肠镜候选；请人工安排"
+    },
+    {
+      "rule_code": "RU-TUMOR-MARKER-RECHECK",
+      "version": "1.0",
+      "priority": 30,
+      "applies_to_condition": "IC:C-TUMOR-MARKER-OBSERVE",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["2035-0", "2029-6"],
+      "reason_template": "肿瘤标志物升高（{value}）特异性有限，建议复查；单项升高不作为诊断依据",
+      "source": "肿瘤标志物临床应用共识整理",
+      "source_version": "v0-draft-2026-09-20"
+    },
+    {
+      "rule_code": "RU-TUMOR-MARKER-PSA",
+      "version": "1.0",
+      "priority": 30,
+      "applies_to_condition": "IC:C-TUMOR-MARKER-OBSERVE",
+      "trigger_directions": ["high"],
+      "recommended_exam_codes": ["2857-1"],
+      "reason_template": "肿瘤标志物升高（{value}），男性建议加查前列腺特异抗原（PSA）",
+      "source": "肿瘤标志物临床应用共识整理",
+      "source_version": "v0-draft-2026-09-20",
+      "applies_sex": "male"
+    },
+    {
+      "rule_code": "RU-NODULE-THYROID-US",
+      "version": "1.0",
+      "priority": 15,
+      "applies_to_condition": "IC:C-NODULE-FOLLOWUP",
+      "trigger_directions": ["text_contains"],
+      "recommended_exam_codes": ["IC:EX-US-THYROID"],
+      "reason_template": "影像结论含结节描述（{value}），建议甲状腺超声随访；随访分层由医师确定",
+      "source": "影像随访共识整理",
+      "source_version": "v0-draft-2026-09-20"
+    }
+  ]
+}
